@@ -521,6 +521,51 @@ export default function ClientiPage() {
         toast.success(`📧 Funzione Email Bulk in sviluppo (${selected.length} clienti selezionati)`);
     };
 
+    const handleBulkDelete = async () => {
+        const selected = clienti.filter(c => selectedClients.has(c.id));
+        if (selected.length === 0) {
+            toast.error('Seleziona almeno un cliente');
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `⚠️ ATTENZIONE!\n\nStai per eliminare ${selected.length} clienti selezionati.\n\nQuesta operazione NON può essere annullata.\n\nVuoi continuare?`
+        );
+
+        if (!confirmed) return;
+
+        try {
+            toast.loading(`🗑️ Eliminazione di ${selected.length} clienti in corso...`, { id: 'bulk-delete-loading' });
+
+            // Raggruppa i clienti per tipo per ottimizzare le chiamate API
+            const privati = selected.filter(c => c.tipo === 'privato');
+            const aziende = selected.filter(c => c.tipo === 'azienda');
+
+            const deletePromises = [];
+
+            // Elimina tutti i clienti privati
+            for (const cliente of privati) {
+                deletePromises.push(clientiAPI.delete('privati', cliente.id));
+            }
+
+            // Elimina tutte le aziende
+            for (const cliente of aziende) {
+                deletePromises.push(clientiAPI.delete('aziende', cliente.id));
+            }
+
+            await Promise.all(deletePromises);
+
+            // Aggiorna la lista e resetta la selezione
+            await loadClienti();
+            setSelectedClients(new Set());
+
+            toast.success(`✅ ${selected.length} clienti eliminati con successo!`, { id: 'bulk-delete-loading' });
+        } catch (error) {
+            console.error('Errore durante l\'eliminazione multipla:', error);
+            toast.error('❌ Errore durante l\'eliminazione dei clienti', { id: 'bulk-delete-loading' });
+        }
+    };
+
     const clearFilters = () => {
         setFilters({
             search: '',
@@ -627,10 +672,19 @@ export default function ClientiPage() {
     const handleDeleteCliente = async (clienteId: string, nomeCliente: string) => {
         if (window.confirm(`⚠️ Sei sicuro di voler eliminare ${nomeCliente}?\n\nQuesta azione è irreversibile!`)) {
             try {
-                // TODO: Implementare API delete
+                // Trova il cliente per determinare il tipo
+                const cliente = clienti.find(c => c.id === clienteId);
+                if (!cliente) {
+                    toast.error('❌ Cliente non trovato');
+                    return;
+                }
+                
+                const tipo = cliente.tipo === 'privato' ? 'privati' : 'aziende';
+                await clientiAPI.delete(tipo, clienteId);
                 toast.success('✅ Cliente eliminato con successo');
                 loadClienti();
             } catch (error) {
+                console.error('Errore eliminazione cliente:', error);
                 toast.error('❌ Errore eliminazione cliente');
             }
         }
@@ -1110,13 +1164,27 @@ export default function ClientiPage() {
                         )}
                         
                         {selectedClients.size > 0 && (
-                            <button
-                                onClick={handleBulkEmail}
-                                className="btn btn-secondary flex items-center gap-2"
-                            >
-                                <Mail size={18} />
-                                <span className="hidden md:inline">Email ({selectedClients.size})</span>
-                            </button>
+                            <>
+                                <button
+                                    onClick={handleBulkEmail}
+                                    className="btn btn-secondary flex items-center gap-2"
+                                >
+                                    <Mail size={18} />
+                                    <span className="hidden md:inline">Email ({selectedClients.size})</span>
+                                </button>
+                                
+                                {/* 🔐 SOLO ADMIN - Pulsante Elimina Selezionati */}
+                                {isAdmin && (
+                                    <button
+                                        onClick={handleBulkDelete}
+                                        className="btn bg-red-600 hover:bg-red-700 text-white flex items-center gap-2"
+                                        title={`Elimina ${selectedClients.size} clienti selezionati`}
+                                    >
+                                        <Trash2 size={18} />
+                                        <span className="hidden md:inline">Elimina ({selectedClients.size})</span>
+                                    </button>
+                                )}
+                            </>
                         )}
 
                         {/* Dropdown Aggiungi Cliente */}

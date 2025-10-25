@@ -1,5 +1,5 @@
 # Dockerfile per ambiente di sviluppo
-FROM node:18
+FROM node:20
 
 # Installa SQLite3 e altre dipendenze di sistema necessarie
 RUN apt-get update && apt-get install -y \
