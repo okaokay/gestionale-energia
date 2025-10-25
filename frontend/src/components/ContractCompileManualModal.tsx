@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { X, Save, FileText, User, Building2, Zap, Flame, CheckCircle, AlertCircle, Info } from 'lucide-react';
+import { X, Save, FileText, User, Building2, Zap, Flame, CheckCircle, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 
@@ -75,7 +75,7 @@ export default function ContractCompileManualModal({ templates, onClose, onSucce
             const token = localStorage.getItem('token');
             const formDataUpload = new FormData();
             
-            uploadedDocs.forEach((file, index) => {
+            uploadedDocs.forEach((file) => {
                 formDataUpload.append('files', file);
             });
 
