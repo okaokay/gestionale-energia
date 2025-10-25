@@ -31,7 +31,3 @@ services:
           type: web
           name: gestionale-energia
           property: host
-    disk:
-      name: gestionale-data
-      mountPath: /app/uploads
-      sizeGB: 1

@@ -99,6 +99,16 @@ https://gestionale-energia.onrender.com
 
 Ogni push su `main` branch attiverà automaticamente un nuovo deploy.
 
+## 🔧 Caratteristiche del Deploy
+
+- **Docker Ottimizzato**: Build multi-stage per ridurre le dimensioni
+- **Timezone Italiana**: Configurato per `Europe/Rome`
+- **Database Persistente**: SQLite con persistenza automatica
+- **Sistema Email**: Integrazione con Brevo per campagne email
+- **Auto-Deploy**: Deploy automatico da GitHub
+- **Piano Gratuito**: Compatibile con il tier gratuito di Render
+- **⚠️ Limitazione**: I file caricati non sono persistenti nel piano gratuito
+
 ## 💾 Persistenza Dati
 
 - Database SQLite: persistente tramite disco Render
