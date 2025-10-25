@@ -3,13 +3,19 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Installa SQLite3, Python e build tools necessari per node-gyp
+# Installa SQLite3, Python, build tools e librerie per canvas
 RUN apk add --no-cache \
     sqlite \
     python3 \
     make \
     g++ \
-    py3-pip
+    py3-pip \
+    pkg-config \
+    cairo-dev \
+    pango-dev \
+    libjpeg-turbo-dev \
+    giflib-dev \
+    pixman-dev
 
 # Copia i file package.json per il caching delle dipendenze
 COPY package*.json ./
