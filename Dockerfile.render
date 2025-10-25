@@ -10,7 +10,7 @@ RUN apk add --no-cache \
     make \
     g++ \
     py3-pip \
-    pkg-config \
+    pkgconfig \
     cairo-dev \
     pango-dev \
     libjpeg-turbo-dev \
