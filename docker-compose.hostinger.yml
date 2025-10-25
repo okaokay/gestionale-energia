@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  gestionale-energia:
+    build: .
+    container_name: gestionale-energia-app
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - TZ=Europe/Rome
+      - JWT_SECRET=your-super-secret-jwt-key-change-this-hostinger-2024
+      - JWT_EXPIRES_IN=7d
+      - DATABASE_PATH=/app/backend/database/database.sqlite
+    ports:
+      - "8080:80"
+      - "8081:3001"
+    volumes:
+      - uploads_data:/app/uploads
+      - database_data:/app/backend/database
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  uploads_data:
+    driver: local
+  database_data:
+    driver: local
