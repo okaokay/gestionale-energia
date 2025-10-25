@@ -37,7 +37,6 @@ COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 # Copia i file necessari
 COPY backend/database/schema.sql ./backend/database/
 COPY backend/database/database.sqlite ./backend/database/
-COPY uploads/ ./uploads/
 
 # Crea le directory necessarie
 RUN mkdir -p uploads/temp uploads/contracts uploads/documenti
