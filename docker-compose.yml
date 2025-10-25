@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  # Applicazione in modalità sviluppo (equivalente a npm run dev)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: gestionale_energia_dev
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - TZ=Europe/Rome
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
+      - DATABASE_PATH=/app/backend/database/database.sqlite
+    ports:
+      - "3001:3001"  # Backend API
+      - "5173:5173"  # Frontend Vite dev server
+    volumes:
+      # Monta il codice sorgente per hot-reload
+      - .:/app
+      - /app/node_modules
+      - /app/frontend/node_modules
+      # Persiste uploads e database
+      - ./uploads:/app/uploads
+      - ./backend/database:/app/backend/database
+    networks:
+      - gestionale_network
+    stdin_open: true
+    tty: true
+
+networks:
+  gestionale_network:
+    driver: bridge
+
+volumes:
+  uploads_data:
+  database_data:

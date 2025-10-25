@@ -1,0 +1,54 @@
+# Dockerfile ottimizzato per Render.com
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Installa SQLite3 e altre dipendenze di sistema
+RUN apk add --no-cache sqlite
+
+# Copia i file package.json per il caching delle dipendenze
+COPY package*.json ./
+COPY frontend/package*.json ./frontend/
+COPY tsconfig.json ./
+
+# Installa le dipendenze
+RUN npm ci --only=production
+
+# Copia il codice sorgente
+COPY backend/ ./backend/
+COPY frontend/ ./frontend/
+
+# Build del frontend
+WORKDIR /app/frontend
+RUN npm ci && npm run build
+
+# Torna alla directory principale e build del backend
+WORKDIR /app
+RUN npm run build
+
+# Copia i file necessari
+COPY uploads/ ./uploads/
+
+# Crea le directory necessarie
+RUN mkdir -p uploads/temp uploads/contracts uploads/documenti uploads/clienti uploads/contract_templates
+RUN mkdir -p backend/database
+
+# Inizializza il database se non esiste
+RUN if [ ! -f backend/database/database.sqlite ]; then \
+    touch backend/database/database.sqlite; \
+    fi
+
+# Copia il database di esempio se esiste
+COPY gestionale_energia.db ./gestionale_energia.db 2>/dev/null || true
+
+# Variabili d'ambiente per Render
+ENV NODE_ENV=production
+ENV PORT=3001
+ENV TZ=Europe/Rome
+ENV DATABASE_PATH=/app/gestionale_energia.db
+
+# Espone la porta
+EXPOSE 3001
+
+# Comando di avvio
+CMD ["node", "dist/backend/server.js"]

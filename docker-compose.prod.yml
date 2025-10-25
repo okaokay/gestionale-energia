@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # Applicazione principale (Backend + Frontend servito staticamente)
+  app:
+    build: .
+    container_name: gestionale_energia_app
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
+      - DATABASE_PATH=/app/backend/database/database.sqlite
+    volumes:
+      - ./uploads:/app/uploads
+      - ./backend/database:/app/backend/database
+    networks:
+      - gestionale_network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx come reverse proxy e server per i file statici
+  nginx:
+    image: nginx:alpine
+    container_name: gestionale_energia_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./ssl:/etc/nginx/ssl:ro  # Per i certificati SSL (opzionale)
+    depends_on:
+      - app
+    networks:
+      - gestionale_network
+
+networks:
+  gestionale_network:
+    driver: bridge
+
+volumes:
+  uploads_data:
+  database_data:

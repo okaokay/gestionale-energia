@@ -1,0 +1,40 @@
+# Dockerfile per ambiente di sviluppo
+FROM node:18
+
+# Installa SQLite3 e altre dipendenze di sistema necessarie
+RUN apt-get update && apt-get install -y \
+    sqlite3 \
+    python3 \
+    python3-pip \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Imposta la directory di lavoro
+WORKDIR /app
+
+# Copia i file package.json per installare le dipendenze
+COPY package*.json ./
+COPY frontend/package*.json ./frontend/
+
+# Installa le dipendenze del progetto principale (incluse quelle di sviluppo)
+RUN npm install
+
+# Installa le dipendenze del frontend
+WORKDIR /app/frontend
+RUN npm install
+
+# Torna alla directory principale
+WORKDIR /app
+
+# Crea le directory necessarie
+RUN mkdir -p uploads/temp uploads/contracts uploads/documenti backend/database
+
+# Espone le porte per backend e frontend
+EXPOSE 3001 5173
+
+# Variabili d'ambiente per sviluppo
+ENV NODE_ENV=development
+ENV PORT=3001
+
+# Comando di avvio per sviluppo (equivalente a npm run dev)
+CMD ["npm", "run", "dev"]

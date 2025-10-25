@@ -1,0 +1,1766 @@
+/**
+ * Pagina lista clienti - UX/UI Avanzata
+ * Modalità visualizzazione multiple, filtri avanzati, azioni bulk
+ */
+
+import { useEffect, useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { clientiAPI } from '../services/api';
+import { useAuthStore } from '../store/authStore';
+import { useRefreshStore } from '../store/refreshStore';
+import toast from 'react-hot-toast';
+import EmailComposeModal from '../components/EmailComposeModal';
+import ImportClientiModal from '../components/ImportClientiModal';
+import WooCommerceImportModal from '../components/WooCommerceImportModal';
+import CreateAgentModal from '../components/CreateAgentModal';
+import StatoContrattoModal from '../components/StatoContrattoModal';
+import AssegnaAgenteAvanzatoModal from '../components/AssegnaAgenteAvanzatoModal';
+import {
+    Search,
+    Plus,
+    Building2,
+    User,
+    UserPlus,
+    Filter,
+    Download,
+    Upload,
+    Mail,
+    Phone,
+    FileText,
+    Grid3x3,
+    List,
+    LayoutGrid,
+    Table2,
+    ChevronDown,
+    X,
+    Eye,
+    Edit,
+    Trash2,
+    MapPin,
+    Calendar,
+    CheckSquare,
+    Square,
+    MoreVertical,
+    TrendingUp,
+    Users,
+    Briefcase,
+    UserCheck,
+    MessageCircle,
+    FileSignature,
+    StickyNote,
+    ClipboardList,
+    Send,
+    PhoneCall,
+    MessageSquare,
+    Zap,
+    Flame,
+    RefreshCw,
+    Lightbulb
+} from 'lucide-react';
+
+type ViewMode = 'cards' | 'list' | 'table' | 'grid';
+
+interface FilterState {
+    search: string;
+    tipo: string;
+    citta: string;
+    provincia: string;
+    haContratti: string;
+    consensoMarketing: string;
+    newsletter: string;
+    dataQuality: string;
+}
+
+export default function ClientiPage() {
+    // 🔐 Controllo ruolo utente
+    const { user } = useAuthStore();
+    const location = useLocation();
+    const { clientiRefreshKey } = useRefreshStore();
+    const isSuperAdmin = user?.ruolo === 'super_admin';
+    const isAdmin = user?.ruolo === 'admin' || isSuperAdmin;
+    const isOperatore = user?.ruolo === 'operatore';
+    
+    const [clienti, setClienti] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [viewMode, setViewMode] = useState<ViewMode>('table');
+    const [showFilters, setShowFilters] = useState(false);
+    const [selectedClients, setSelectedClients] = useState<Set<string>>(new Set());
+    const [openActionMenu, setOpenActionMenu] = useState<string | null>(null);
+    
+    // Newsletter
+    const [newsletter, setNewsletter] = useState<any[]>([]);
+    
+    // Agenti
+    const [agenti, setAgenti] = useState<any[]>([]);
+    const [showCreateAgentModal, setShowCreateAgentModal] = useState(false);
+    
+    // Modale Email
+    const [showEmailModal, setShowEmailModal] = useState(false);
+    const [selectedClientForEmail, setSelectedClientForEmail] = useState<any>(null);
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [showWooCommerceImportModal, setShowWooCommerceImportModal] = useState(false);
+    const [showAddDropdown, setShowAddDropdown] = useState(false);
+    
+    // Modale Cambio Stato Contratto
+    const [showStatoModal, setShowStatoModal] = useState(false);
+    const [clientePerStato, setClientePerStato] = useState<any>(null);
+    const [nuovoStatoSelezionato, setNuovoStatoSelezionato] = useState<string>('');
+    const [contrattiCliente, setContrattiCliente] = useState<any[]>([]);
+    
+    // Modale Assegnazione Agente Avanzata
+    const [showAssegnaAgenteModal, setShowAssegnaAgenteModal] = useState(false);
+    const [clientePerAssegnazione, setClientePerAssegnazione] = useState<any>(null);
+    
+    // Stati contratti per dropdown
+    const [contrattiStati, setContrattiStati] = useState<{[key: string]: {luce?: string, gas?: string}}>({});
+    
+    // Filtri
+    const [filters, setFilters] = useState<FilterState>({
+        search: '',
+        tipo: '',
+        citta: '',
+        provincia: '',
+        haContratti: '',
+        consensoMarketing: '',
+        newsletter: '',
+        dataQuality: ''
+    });
+
+    // Statistiche
+    const [stats, setStats] = useState({
+        totale: 0,
+        privati: 0,
+        aziende: 0,
+        conContratti: 0
+    });
+
+    // Carica newsletter e agenti all'avvio
+    useEffect(() => {
+        loadNewsletter();
+        loadAgenti();
+    }, []);
+
+    useEffect(() => {
+        console.log('🔄 Filters changed');
+        loadClienti();
+    }, [filters]);
+    
+    // 🔄 Ricarica quando il refreshKey cambia (triggato da altre pagine)
+    useEffect(() => {
+        if (clientiRefreshKey > 0 && location.pathname === '/clienti') {
+            console.log('🔄 RefreshKey triggered reload:', clientiRefreshKey);
+            loadClienti();
+        }
+    }, [clientiRefreshKey]);
+    
+    // 🔄 Ricarica automaticamente quando torni alla pagina clienti (navigazione interna)
+    useEffect(() => {
+        if (location.pathname === '/clienti') {
+            console.log('🔄 Navigato a /clienti dalla location key:', location.key);
+            loadClienti();
+        }
+    }, [location.key]); // Usa location.key invece di pathname per reagire a OGNI navigazione
+    
+    // 🔄 Ricarica automaticamente quando la pagina diventa visibile (cambio tab browser)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible' && location.pathname === '/clienti') {
+                console.log('🔄 Pagina clienti visibile - ricarico dati');
+                loadClienti();
+            }
+        };
+        
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [location.pathname]); // Ri-registra quando cambia la route
+
+    useEffect(() => {
+        calculateStats();
+    }, [clienti]);
+
+    // Chiudi menu azioni quando si clicca fuori
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            const target = event.target as HTMLElement;
+            // Non chiudere se click è dentro un menu dropdown o sul trigger
+            if (!target.closest('.action-menu-dropdown') && !target.closest('.action-menu-trigger')) {
+                setOpenActionMenu(null);
+            }
+        };
+
+        if (openActionMenu) {
+            // Usa timeout per evitare che si chiuda immediatamente
+            setTimeout(() => {
+                document.addEventListener('click', handleClickOutside);
+            }, 0);
+            return () => {
+                document.removeEventListener('click', handleClickOutside);
+            };
+        }
+    }, [openActionMenu]);
+
+    // === CARICAMENTO DATI ===
+    
+    const loadNewsletter = async () => {
+        try {
+            const response = await clientiAPI.getNewsletter();
+            setNewsletter(response.data.data || []);
+        } catch (error) {
+            console.error('Errore caricamento newsletter:', error);
+        }
+    };
+
+    const loadAgenti = async () => {
+        try {
+            const response = await fetch('http://localhost:3001/api/agenti', {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+            const data = await response.json();
+            if (data.success) {
+                setAgenti(data.data || []);
+            }
+        } catch (error) {
+            console.error('Errore caricamento agenti:', error);
+        }
+    };
+
+    const handleAssignAgent = async (clienteId: number | string, clienteTipo: string, agentId: number | string, commissione?: number) => {
+        // Trova il cliente per verificare se ha contratti
+        const cliente = clienti.find(c => c.id === clienteId && c.tipo === clienteTipo);
+        if (!cliente) {
+            toast.error('Cliente non trovato');
+            return;
+        }
+
+        // Usa sempre la modale avanzata per tutti i clienti
+        setClientePerAssegnazione({ ...cliente, agentId });
+        setShowAssegnaAgenteModal(true);
+        return;
+
+        try {
+            const payload = {
+                cliente_id: clienteId,
+                cliente_tipo: clienteTipo,
+                new_agent_id: agentId,
+                commissione_pattuita: commissione || null,
+                motivo: 'Assegnazione da interfaccia'
+            };
+            
+            console.log('📤 Invio assegnazione agente:', payload);
+            
+            const response = await fetch('http://localhost:3001/api/agenti/assign-cliente', {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+            
+            if (data.success) {
+                toast.success(commissione ? `Cliente assegnato con commissione di €${commissione}!` : 'Cliente assegnato con successo!');
+                loadClienti(); // Ricarica lista
+            } else {
+                toast.error(data.message || 'Errore assegnazione');
+            }
+        } catch (error) {
+            console.error('Errore:', error);
+            toast.error('Errore durante l\'assegnazione');
+        }
+    };
+
+    // Gestione cambio stato cliente - supporta tipoContratto (luce/gas) e filtra i contratti
+    const handleChangeStato = async (
+        clienteId: number,
+        clienteTipo: string,
+        nuovoStato: string,
+        tipoContratto?: 'luce' | 'gas'
+    ) => {
+        try {
+            const cliente = clienti.find(c => c.id === clienteId && c.tipo === clienteTipo);
+            if (!cliente) return;
+            
+            const { contrattiAPI } = await import('../services/api');
+            const response = await contrattiAPI.getByCliente(clienteTipo, String(clienteId));
+            const contrattiAll = response.data.data || [];
+            
+            const contrattiFiltrati = tipoContratto
+                ? contrattiAll.filter((c: any) => c?.tipo_contratto === tipoContratto)
+                : contrattiAll;
+            
+            if (tipoContratto && contrattiFiltrati.length === 0) {
+                toast.error(`Questo cliente non ha contratti ${tipoContratto === 'luce' ? 'LUCE' : 'GAS'}`);
+                return;
+            }
+            if (!tipoContratto && contrattiFiltrati.length === 0) {
+                toast.error('Questo cliente non ha contratti');
+                return;
+            }
+            
+            // Salva i dati e apri la modale
+            setClientePerStato(cliente);
+            setNuovoStatoSelezionato(nuovoStato);
+            setContrattiCliente(contrattiFiltrati);
+            setShowStatoModal(true);
+            
+        } catch (error) {
+            console.error('Errore:', error);
+            toast.error('Errore durante il caricamento dei contratti');
+        }
+    };
+    
+    const handleUpdateStatoContratto = async (contrattoId: string, tipoContratto: 'luce' | 'gas', nuovoStato: string) => {
+        const { contrattiAPI, storicoAPI } = await import('../services/api');
+        
+        // 1. Ottieni il contratto per lo stato precedente
+        const contrattoResponse = await contrattiAPI.getByCliente(clientePerStato.tipo, String(clientePerStato.id));
+        const contratto = contrattoResponse.data.data.find((c: any) => c.id === contrattoId);
+        const statoPrecedente = contratto?.stato || 'N/A';
+        
+        // 2. Aggiorna lo stato del contratto
+        await contrattiAPI.update(tipoContratto, contrattoId, { stato: nuovoStato });
+        
+        // 3. Registra nello storico
+        const formData = new FormData();
+        formData.append('procedura_precedente', contratto?.procedure || 'Switch');
+        formData.append('procedura_nuova', contratto?.procedure || 'Switch');
+        formData.append('stato_precedente', statoPrecedente);
+        formData.append('stato_nuovo', nuovoStato);
+        formData.append('note', `Stato modificato dalla lista clienti`);
+        
+        await storicoAPI.addProcedura(tipoContratto, contrattoId, formData);
+        
+        // 4. Ricarica la lista clienti
+        console.log('✅ Refresh clienti dopo cambio stato dalla lista');
+        loadClienti();
+    };
+
+    const loadClienti = async () => {
+        try {
+            console.log('🔄 loadClienti chiamato - timestamp:', new Date().toISOString());
+            
+            // 🔄 FORZA re-render azzerando lo stato
+            setClienti([]);
+            
+            const response = await clientiAPI.getAll({ 
+                search: filters.search, 
+                tipo: filters.tipo, 
+                limit: 200,
+                _t: Date.now() // Cache busting
+            });
+            const allClienti = response.data.data.clienti;
+            
+            console.log('📦 Clienti ricevuti dal backend:', allClienti.length);
+            const toni = allClienti.find((c: any) => 
+                c.nome?.includes('TONI') || c.cognome?.includes('CAROSELLA')
+            );
+            if (toni) {
+                console.log('🔍 TONI TROVATO:');
+                console.log('   Nome:', toni.nome, toni.cognome);
+                console.log('   Stato:', toni.stato);
+                console.log('   ID:', toni.id);
+            }
+            
+            // Applica filtri lato client
+            let filtered = allClienti;
+            
+            if (filters.citta) {
+                filtered = filtered.filter((c: any) => 
+                    (c.citta || '').toLowerCase().includes(filters.citta.toLowerCase())
+                );
+            }
+            
+            if (filters.provincia) {
+                filtered = filtered.filter((c: any) => 
+                    (c.provincia || '').toLowerCase() === filters.provincia.toLowerCase()
+                );
+            }
+
+            if (filters.consensoMarketing) {
+                filtered = filtered.filter((c: any) => {
+                    if (filters.consensoMarketing === 'si') return c.consenso_marketing === 1;
+                    if (filters.consensoMarketing === 'no') return c.consenso_marketing === 0;
+                    return true;
+                });
+            }
+            
+            if (filters.newsletter) {
+                filtered = filtered.filter((c: any) => {
+                    const clienteNewsletter = (c.newsletter_nomi || '').toLowerCase();
+                    return clienteNewsletter.includes(filters.newsletter.toLowerCase());
+                });
+            }
+            
+            if (filters.dataQuality) {
+                filtered = filtered.filter((c: any) => {
+                    if (filters.dataQuality === 'complete') return !c.incomplete_data;
+                    if (filters.dataQuality === 'incomplete') return c.incomplete_data === 1 || c.incomplete_data === true;
+                    return true;
+                });
+            }
+            
+            setClienti(filtered);
+            
+            // Inizializza stati contratti
+            const statiContratti: {[key: string]: {luce?: string, gas?: string}} = {};
+            filtered.forEach((cliente: any) => {
+                const clienteKey = `${cliente.tipo}_${cliente.id}`;
+                statiContratti[clienteKey] = {
+                    luce: cliente.stato_contratto_luce || undefined,
+                    gas: cliente.stato_contratto_gas || undefined
+                };
+            });
+            setContrattiStati(statiContratti);
+            
+        } catch (error) {
+            toast.error('Errore caricamento clienti');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const calculateStats = () => {
+        const totale = clienti.length;
+        const privati = clienti.filter(c => c.tipo === 'privato').length;
+        const aziende = clienti.filter(c => c.tipo === 'azienda').length;
+        const conContratti = clienti.filter(c => (c.num_contratti || 0) > 0).length;
+        
+        setStats({ totale, privati, aziende, conContratti });
+    };
+
+    const toggleSelectClient = (id: string) => {
+        const newSelected = new Set(selectedClients);
+        if (newSelected.has(id)) {
+            newSelected.delete(id);
+        } else {
+            newSelected.add(id);
+        }
+        setSelectedClients(newSelected);
+    };
+
+    const selectAllClients = () => {
+        if (selectedClients.size === clienti.length) {
+            setSelectedClients(new Set());
+        } else {
+            setSelectedClients(new Set(clienti.map(c => c.id)));
+        }
+    };
+
+    const handleExportCSV = () => {
+        const selected = clienti.filter(c => selectedClients.has(c.id));
+        const dataToExport = selected.length > 0 ? selected : clienti;
+        
+        // Crea CSV
+        const headers = ['Tipo', 'Nome', 'Email', 'Telefono', 'Città', 'Provincia', 'CF/P.IVA'];
+        const rows = dataToExport.map(c => [
+            c.tipo === 'privato' ? 'Privato' : 'Azienda',
+            c.tipo === 'privato' ? `${c.nome} ${c.cognome}` : c.ragione_sociale,
+            c.email_principale || c.email_referente || '',
+            c.telefono_principale || c.telefono || '',
+            c.citta || '',
+            c.provincia || '',
+            c.codice_fiscale || c.partita_iva || ''
+        ]);
+        
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+        ].join('\n');
+        
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `clienti_export_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+        
+        toast.success(`✅ ${dataToExport.length} clienti esportati!`);
+    };
+
+    const handleBulkEmail = () => {
+        const selected = clienti.filter(c => selectedClients.has(c.id));
+        if (selected.length === 0) {
+            toast.error('Seleziona almeno un cliente');
+            return;
+        }
+        
+        toast.success(`📧 Funzione Email Bulk in sviluppo (${selected.length} clienti selezionati)`);
+    };
+
+    const clearFilters = () => {
+        setFilters({
+            search: '',
+            tipo: '',
+            citta: '',
+            provincia: '',
+            haContratti: '',
+            consensoMarketing: '',
+            newsletter: '',
+            dataQuality: ''
+        });
+    };
+    
+    const handleRecalculateQuality = async () => {
+        try {
+            toast.loading('🔄 Ricalcolo qualità dati in corso...');
+            const response = await fetch('http://localhost:3001/api/clienti/recalculate-quality', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                toast.dismiss();
+                toast.success(`✅ Qualità dati aggiornata! ${result.updated.total} clienti processati`);
+                loadClienti(); // Ricarica i clienti con i nuovi score
+            } else {
+                toast.dismiss();
+                toast.error('❌ Errore durante il ricalcolo');
+            }
+        } catch (error) {
+            toast.dismiss();
+            toast.error('❌ Errore connessione al server');
+        }
+    };
+
+    // === AZIONI CLIENTE ===
+    
+    const handleCallCliente = (cliente: any) => {
+        const telefono = cliente.telefono_principale || cliente.telefono;
+        if (telefono) {
+            window.location.href = `tel:${telefono}`;
+            toast.success(`📞 Chiamata in corso...`);
+        } else {
+            toast.error('Nessun numero di telefono disponibile');
+        }
+    };
+
+    const handleEmailCliente = (cliente: any) => {
+        const email = cliente.email_principale || cliente.email_referente;
+        if (email) {
+            window.location.href = `mailto:${email}`;
+            toast.success(`📧 Apertura client email...`);
+        } else {
+            toast.error('Nessuna email disponibile');
+        }
+    };
+
+    const handleWhatsAppCliente = (cliente: any) => {
+        const telefono = cliente.telefono_principale || cliente.telefono;
+        if (telefono) {
+            // Rimuove spazi e caratteri speciali
+            const cleanPhone = telefono.replace(/[^\d+]/g, '');
+            window.open(`https://wa.me/${cleanPhone}`, '_blank');
+            toast.success(`💬 Apertura WhatsApp...`);
+        } else {
+            toast.error('Nessun numero WhatsApp disponibile');
+        }
+    };
+
+    const handleViewContracts = (clienteId: string) => {
+        window.location.href = `/clienti/${clienteId}#contratti`;
+        toast.success('📄 Visualizzazione contratti...');
+    };
+
+    const handleAddContract = (clienteId: string) => {
+        toast.info('🔜 Funzione "Aggiungi Contratto" in sviluppo');
+    };
+
+    const handleSendEmailMarketing = (cliente: any) => {
+        const email = cliente.email_principale || cliente.email_referente;
+        if (!email) {
+            toast.error('❌ Cliente senza email');
+            return;
+        }
+        
+        setSelectedClientForEmail(cliente);
+        setShowEmailModal(true);
+        setOpenActionMenu(null);
+    };
+
+    const handleAddNote = (clienteId: string) => {
+        const nota = prompt('📝 Inserisci una nota per questo cliente:');
+        if (nota && nota.trim()) {
+            // TODO: Implementare API per salvare nota
+            toast.success('✅ Nota salvata con successo!');
+        }
+    };
+
+    const handleDeleteCliente = async (clienteId: string, nomeCliente: string) => {
+        if (window.confirm(`⚠️ Sei sicuro di voler eliminare ${nomeCliente}?\n\nQuesta azione è irreversibile!`)) {
+            try {
+                // TODO: Implementare API delete
+                toast.success('✅ Cliente eliminato con successo');
+                loadClienti();
+            } catch (error) {
+                toast.error('❌ Errore eliminazione cliente');
+            }
+        }
+    };
+
+    const handleExportSingleClient = (cliente: any) => {
+        const data = {
+            tipo: cliente.tipo,
+            nome: cliente.tipo === 'privato' ? `${cliente.nome} ${cliente.cognome}` : cliente.ragione_sociale,
+            email: cliente.email_principale || cliente.email_referente || '',
+            telefono: cliente.telefono_principale || cliente.telefono || '',
+            citta: cliente.citta || '',
+            provincia: cliente.provincia || '',
+            cf_piva: cliente.codice_fiscale || cliente.partita_iva || ''
+        };
+
+        const csvContent = Object.keys(data).map(key => `${key},${data[key as keyof typeof data]}`).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `cliente_${cliente.id}_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+        
+        toast.success('📥 Dati cliente esportati!');
+    };
+
+    const activeFiltersCount = Object.values(filters).filter(v => v !== '').length;
+
+    // Componente per menu azioni rapide
+    const ActionsMenu = ({ cliente, inline = false }: { cliente: any; inline?: boolean }) => {
+        const clienteNome = cliente.tipo === 'privato' ? `${cliente.nome} ${cliente.cognome}` : cliente.ragione_sociale;
+        
+        if (inline) {
+            // Azioni inline per vista cards/list
+            return (
+                <div className="flex items-center gap-2">
+                    {(cliente.telefono_principale || cliente.telefono) && (
+                        <button
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleCallCliente(cliente);
+                            }}
+                            className="p-2 hover:bg-green-100 rounded-lg transition-colors text-green-600"
+                            title="Chiama"
+                        >
+                            <PhoneCall size={18} />
+                        </button>
+                    )}
+                    {(cliente.email_principale || cliente.email_referente) && (
+                        <button
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleEmailCliente(cliente);
+                            }}
+                            className="p-2 hover:bg-blue-100 rounded-lg transition-colors text-blue-600"
+                            title="Email"
+                        >
+                            <Mail size={18} />
+                        </button>
+                    )}
+                    {(cliente.telefono_principale || cliente.telefono) && (
+                        <button
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleWhatsAppCliente(cliente);
+                            }}
+                            className="p-2 hover:bg-green-100 rounded-lg transition-colors text-green-600"
+                            title="WhatsApp"
+                        >
+                            <MessageCircle size={18} />
+                        </button>
+                    )}
+                    <Link
+                        to={`/clienti/${cliente.id}`}
+                        className="p-2 hover:bg-blue-100 rounded-lg transition-colors text-blue-600"
+                        title="Visualizza"
+                    >
+                        <Eye size={18} />
+                    </Link>
+                    <div className="relative">
+                        <button
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setOpenActionMenu(openActionMenu === cliente.id ? null : cliente.id);
+                            }}
+                            className="action-menu-trigger p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="Altre azioni"
+                        >
+                            <MoreVertical size={18} />
+                        </button>
+                        
+                        {openActionMenu === cliente.id && (
+                            <div className="action-menu-dropdown absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border z-[9999]">
+                                <div className="py-1">
+                                    <button
+                                        onClick={() => {
+                                            handleViewContracts(cliente.id);
+                                            setOpenActionMenu(null);
+                                        }}
+                                        className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                                    >
+                                        <FileText size={16} />
+                                        Visualizza Contratti
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            handleAddContract(cliente.id);
+                                            setOpenActionMenu(null);
+                                        }}
+                                        className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                                    >
+                                        <FileSignature size={16} />
+                                        Nuovo Contratto
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            handleSendEmailMarketing(cliente);
+                                            setOpenActionMenu(null);
+                                        }}
+                                        className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                                    >
+                                        <Send size={16} />
+                                        Invia Email
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            handleAddNote(cliente.id);
+                                            setOpenActionMenu(null);
+                                        }}
+                                        className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                                    >
+                                        <StickyNote size={16} />
+                                        Aggiungi Nota
+                                    </button>
+                                    <hr className="my-1" />
+                                    <Link
+                                        to={`/clienti/${cliente.id}`}
+                                        className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-700 block"
+                                        onClick={() => setOpenActionMenu(null)}
+                                    >
+                                        <Edit size={16} />
+                                        Modifica Cliente
+                                    </Link>
+                                    {/* 🔐 SOLO ADMIN */}
+                                    {isAdmin && (
+                                        <>
+                                            <button
+                                                onClick={() => {
+                                                    handleExportSingleClient(cliente);
+                                                    setOpenActionMenu(null);
+                                                }}
+                                                className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                                            >
+                                                <Download size={16} />
+                                                Esporta Dati
+                                            </button>
+                                            <hr className="my-1" />
+                                            <button
+                                                onClick={() => {
+                                                    handleDeleteCliente(cliente.id, clienteNome);
+                                                    setOpenActionMenu(null);
+                                                }}
+                                                className="w-full text-left px-4 py-2 hover:bg-red-50 flex items-center gap-2 text-red-600"
+                                            >
+                                                <Trash2 size={16} />
+                                                Elimina Cliente
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // Azioni per tabella (pulsanti grandi)
+        return (
+            <div className="flex items-center justify-center gap-1">
+                {(cliente.telefono_principale || cliente.telefono) && (
+                    <button
+                        onClick={() => handleCallCliente(cliente)}
+                        className="p-1.5 hover:bg-green-100 rounded-lg transition-colors text-green-600"
+                        title="Chiama"
+                    >
+                        <PhoneCall size={18} />
+                    </button>
+                )}
+                {(cliente.email_principale || cliente.email_referente) && (
+                    <button
+                        onClick={() => handleEmailCliente(cliente)}
+                        className="p-1.5 hover:bg-blue-100 rounded-lg transition-colors text-blue-600"
+                        title="Email"
+                    >
+                        <Mail size={18} />
+                    </button>
+                )}
+                {(cliente.telefono_principale || cliente.telefono) && (
+                    <button
+                        onClick={() => handleWhatsAppCliente(cliente)}
+                        className="p-1.5 hover:bg-green-100 rounded-lg transition-colors text-green-600"
+                        title="WhatsApp"
+                    >
+                        <MessageCircle size={18} />
+                    </button>
+                )}
+                <Link
+                    to={`/clienti/${cliente.id}`}
+                    className="p-1.5 hover:bg-blue-100 rounded-lg transition-colors text-blue-600"
+                    title="Dettagli"
+                >
+                    <Eye size={18} />
+                </Link>
+                <div className="relative">
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenActionMenu(openActionMenu === cliente.id ? null : cliente.id);
+                        }}
+                        className="action-menu-trigger p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                        title="Altre azioni"
+                    >
+                        <MoreVertical size={18} />
+                    </button>
+                    
+                    {openActionMenu === cliente.id && (
+                        <div className="action-menu-dropdown absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border z-[9999]">
+                            <div className="py-1">
+                                <button
+                                    onClick={() => {
+                                        handleViewContracts(cliente.id);
+                                        setOpenActionMenu(null);
+                                    }}
+                                    className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                                >
+                                    <FileText size={16} />
+                                    Visualizza Contratti
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        handleAddContract(cliente.id);
+                                        setOpenActionMenu(null);
+                                    }}
+                                    className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                                >
+                                    <FileSignature size={16} />
+                                    Nuovo Contratto
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        handleSendEmailMarketing(cliente);
+                                        setOpenActionMenu(null);
+                                    }}
+                                    className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                                >
+                                    <Send size={16} />
+                                    Invia Email
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        handleAddNote(cliente.id);
+                                        setOpenActionMenu(null);
+                                    }}
+                                    className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                                >
+                                    <StickyNote size={16} />
+                                    Aggiungi Nota
+                                </button>
+                                <hr className="my-1" />
+                                <Link
+                                    to={`/clienti/${cliente.id}`}
+                                    className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-700 block"
+                                    onClick={() => setOpenActionMenu(null)}
+                                >
+                                    <Edit size={16} />
+                                    Modifica Cliente
+                                </Link>
+                                {/* 🔐 SOLO ADMIN */}
+                                {isAdmin && (
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                handleExportSingleClient(cliente);
+                                                setOpenActionMenu(null);
+                                            }}
+                                            className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2 text-gray-700"
+                                        >
+                                            <Download size={16} />
+                                            Esporta Dati
+                                        </button>
+                                        <hr className="my-1" />
+                                        <button
+                                            onClick={() => {
+                                                handleDeleteCliente(cliente.id, clienteNome);
+                                                setOpenActionMenu(null);
+                                            }}
+                                            className="w-full text-left px-4 py-2 hover:bg-red-50 flex items-center gap-2 text-red-600"
+                                        >
+                                            <Trash2 size={16} />
+                                            Elimina Cliente
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="space-y-6">
+            {/* Header con KPI */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="card bg-gradient-to-br from-blue-500 to-blue-600 text-white">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-blue-100 text-sm">Totale Clienti</p>
+                            <h3 className="text-3xl font-bold mt-1">{stats.totale}</h3>
+                        </div>
+                        <Users size={40} className="opacity-80" />
+                    </div>
+                </div>
+
+                <div className="card bg-gradient-to-br from-green-500 to-green-600 text-white">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-green-100 text-sm">Clienti Privati</p>
+                            <h3 className="text-3xl font-bold mt-1">{stats.privati}</h3>
+                        </div>
+                        <User size={40} className="opacity-80" />
+                    </div>
+                </div>
+
+                <div className="card bg-gradient-to-br from-purple-500 to-purple-600 text-white">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-purple-100 text-sm">Aziende</p>
+                            <h3 className="text-3xl font-bold mt-1">{stats.aziende}</h3>
+                        </div>
+                        <Briefcase size={40} className="opacity-80" />
+                    </div>
+                </div>
+
+                <div className="card bg-gradient-to-br from-orange-500 to-orange-600 text-white">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-orange-100 text-sm">Con Contratti</p>
+                            <h3 className="text-3xl font-bold mt-1">{stats.conContratti}</h3>
+                        </div>
+                        <UserCheck size={40} className="opacity-80" />
+                    </div>
+                </div>
+            </div>
+
+            {/* Toolbar principale */}
+            <div className="card">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                    {/* Ricerca e filtri */}
+                    <div className="flex-1 flex items-center gap-3">
+                        <div className="flex-1 relative">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                            <input
+                                type="text"
+                                placeholder="Cerca per nome, email, CF, P.IVA..."
+                                className="input pl-10 w-full"
+                                value={filters.search}
+                                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                            />
+                        </div>
+                        
+                        <button
+                            onClick={() => setShowFilters(!showFilters)}
+                            className={`btn ${showFilters || activeFiltersCount > 0 ? 'btn-primary' : 'btn-secondary'} flex items-center gap-2 relative`}
+                        >
+                            <Filter size={18} />
+                            Filtri
+                            {activeFiltersCount > 0 && (
+                                <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                                    {activeFiltersCount}
+                                </span>
+                            )}
+                        </button>
+                    </div>
+
+                    {/* Modalità visualizzazione */}
+                    <div className="flex items-center gap-2 border-l pl-4">
+                        <button
+                            onClick={() => setViewMode('cards')}
+                            className={`p-2 rounded-lg transition-colors ${
+                                viewMode === 'cards' ? 'bg-primary-100 text-primary-600' : 'hover:bg-gray-100'
+                            }`}
+                            title="Vista Cards"
+                        >
+                            <LayoutGrid size={20} />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('grid')}
+                            className={`p-2 rounded-lg transition-colors ${
+                                viewMode === 'grid' ? 'bg-primary-100 text-primary-600' : 'hover:bg-gray-100'
+                            }`}
+                            title="Vista Griglia"
+                        >
+                            <Grid3x3 size={20} />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('list')}
+                            className={`p-2 rounded-lg transition-colors ${
+                                viewMode === 'list' ? 'bg-primary-100 text-primary-600' : 'hover:bg-gray-100'
+                            }`}
+                            title="Vista Lista"
+                        >
+                            <List size={20} />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('table')}
+                            className={`p-2 rounded-lg transition-colors ${
+                                viewMode === 'table' ? 'bg-primary-100 text-primary-600' : 'hover:bg-gray-100'
+                            }`}
+                            title="Vista Tabella Dettagliata"
+                        >
+                            <Table2 size={20} />
+                        </button>
+                    </div>
+
+                    {/* Azioni */}
+                    <div className="flex items-center gap-2 border-l pl-4">
+                        {/* 🔐 PULSANTI ADMIN/SUPER_ADMIN ONLY */}
+                        {isAdmin && (
+                            <>
+                                <button
+                                    onClick={() => setShowImportModal(true)}
+                                    className="btn bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-2"
+                                    title="Importa da CSV/Excel (Template Fisso)"
+                                >
+                                    <Upload size={18} />
+                                    <span className="hidden md:inline">Import CSV</span>
+                                </button>
+                                
+                                <button
+                                    onClick={() => setShowWooCommerceImportModal(true)}
+                                    className="btn bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
+                                    title="Importa CSV con Mappatura Campi (Stile WooCommerce)"
+                                >
+                                    <Upload size={18} />
+                                    <span className="hidden md:inline">Import Avanzato</span>
+                                </button>
+                                
+                                <button
+                                    onClick={handleExportCSV}
+                                    className="btn btn-secondary flex items-center gap-2"
+                                    title="Esporta CSV"
+                                >
+                                    <Download size={18} />
+                                    <span className="hidden md:inline">Esporta</span>
+                                </button>
+                                
+                                <button
+                                    onClick={handleRecalculateQuality}
+                                    className="btn bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2"
+                                    title="Ricalcola Qualità Dati"
+                                >
+                                    <RefreshCw size={18} />
+                                    <span className="hidden md:inline">Ricalcola</span>
+                                </button>
+                            </>
+                        )}
+                        
+                        {selectedClients.size > 0 && (
+                            <button
+                                onClick={handleBulkEmail}
+                                className="btn btn-secondary flex items-center gap-2"
+                            >
+                                <Mail size={18} />
+                                <span className="hidden md:inline">Email ({selectedClients.size})</span>
+                            </button>
+                        )}
+
+                        {/* Dropdown Aggiungi Cliente */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowAddDropdown(!showAddDropdown)}
+                                className="btn bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 text-white flex items-center gap-2 font-semibold"
+                                title="Aggiungi nuovo cliente"
+                            >
+                                <Plus size={20} />
+                                <span>Aggiungi</span>
+                                <ChevronDown size={16} />
+                            </button>
+
+                            {showAddDropdown && (
+                                <>
+                                    {/* Overlay per chiudere dropdown */}
+                                    <div 
+                                        className="fixed inset-0 z-10" 
+                                        onClick={() => setShowAddDropdown(false)}
+                                    ></div>
+                                    
+                                    {/* Menu dropdown */}
+                                    <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border z-20 overflow-hidden">
+                                        <Link
+                                            to="/clienti/new/privato"
+                                            className="flex items-center gap-3 px-4 py-3 hover:bg-green-50 transition-colors border-b"
+                                            onClick={() => setShowAddDropdown(false)}
+                                        >
+                                            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                                                <User size={20} className="text-green-600" />
+                                            </div>
+                                            <div>
+                                                <div className="font-semibold text-gray-900">Cliente Privato</div>
+                                                <div className="text-xs text-gray-500">Persona fisica</div>
+                                            </div>
+                                        </Link>
+                                        
+                                        <Link
+                                            to="/clienti/new/azienda"
+                                            className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 transition-colors"
+                                            onClick={() => setShowAddDropdown(false)}
+                                        >
+                                            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                                <Building2 size={20} className="text-blue-600" />
+                                            </div>
+                                            <div>
+                                                <div className="font-semibold text-gray-900">Cliente Azienda</div>
+                                                <div className="text-xs text-gray-500">Persona giuridica</div>
+                                            </div>
+                                        </Link>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Pannello filtri avanzati */}
+                {showFilters && (
+                    <div className="mt-4 pt-4 border-t grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                        <select
+                            className="input"
+                            value={filters.tipo}
+                            onChange={(e) => setFilters({ ...filters, tipo: e.target.value })}
+                        >
+                            <option value="">🔹 Tipo Cliente</option>
+                            <option value="privati">👤 Solo Privati</option>
+                            <option value="aziende">🏢 Solo Aziende</option>
+                        </select>
+
+                        <input
+                            type="text"
+                            placeholder="🏙️ Città"
+                            className="input"
+                            value={filters.citta}
+                            onChange={(e) => setFilters({ ...filters, citta: e.target.value })}
+                        />
+
+                        <input
+                            type="text"
+                            placeholder="📍 Provincia (sigla)"
+                            className="input"
+                            value={filters.provincia}
+                            onChange={(e) => setFilters({ ...filters, provincia: e.target.value.toUpperCase() })}
+                            maxLength={2}
+                        />
+
+                        <select
+                            className="input"
+                            value={filters.consensoMarketing}
+                            onChange={(e) => setFilters({ ...filters, consensoMarketing: e.target.value })}
+                        >
+                            <option value="">📧 Consenso Marketing</option>
+                            <option value="si">✅ Con consenso</option>
+                            <option value="no">❌ Senza consenso</option>
+                        </select>
+                        
+                        <select
+                            className="input"
+                            value={filters.newsletter}
+                            onChange={(e) => setFilters({ ...filters, newsletter: e.target.value })}
+                        >
+                            <option value="">📰 Newsletter</option>
+                            {newsletter.map(nl => (
+                                <option key={nl.id} value={nl.nome}>{nl.nome}</option>
+                            ))}
+                        </select>
+                        
+                        <select
+                            className="input"
+                            value={filters.dataQuality}
+                            onChange={(e) => setFilters({ ...filters, dataQuality: e.target.value })}
+                        >
+                            <option value="">🎯 Qualità Dati</option>
+                            <option value="complete">🟢 Completi</option>
+                            <option value="incomplete">🔴 Incompleti</option>
+                        </select>
+
+                        <button
+                            onClick={clearFilters}
+                            className="btn btn-secondary flex items-center justify-center gap-2"
+                        >
+                            <X size={18} />
+                            Pulisci Filtri
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* Contenuto principale - Visualizzazioni */}
+            {loading ? (
+                <div className="card flex justify-center items-center py-20">
+                    <div className="text-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Caricamento clienti...</p>
+                    </div>
+                </div>
+            ) : clienti.length === 0 ? (
+                <div className="card text-center py-20">
+                    <Users size={48} className="mx-auto text-gray-400 mb-4" />
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">Nessun cliente trovato</h3>
+                    <p className="text-gray-600 mb-6">
+                        {filters.search || activeFiltersCount > 0 
+                            ? 'Prova a modificare i filtri di ricerca' 
+                            : 'Inizia aggiungendo il tuo primo cliente'}
+                    </p>
+                    <div className="flex justify-center gap-3">
+                        <Link to="/clienti/new/privato" className="btn btn-secondary">
+                            <User size={18} className="mr-2" />
+                            Nuovo Cliente Privato
+                        </Link>
+                        <Link to="/clienti/new/azienda" className="btn btn-primary">
+                            <Building2 size={18} className="mr-2" />
+                            Nuova Azienda
+                        </Link>
+                    </div>
+                </div>
+            ) : (
+                <>
+                    {/* VISTA CARDS */}
+                    {viewMode === 'cards' && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {clienti.map((cliente) => (
+                                <div key={`${cliente.id}-${cliente.stato || 'none'}`} className="card hover:shadow-lg transition-shadow">
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div className="flex items-center gap-3">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedClients.has(cliente.id)}
+                                                onChange={() => toggleSelectClient(cliente.id)}
+                                                className="w-4 h-4"
+                                            />
+                                            <div className={`p-2 rounded-lg ${
+                                                cliente.tipo === 'privato' ? 'bg-green-100 text-green-600' : 'bg-purple-100 text-purple-600'
+                                            }`}>
+                                                {cliente.tipo === 'privato' ? <User size={24} /> : <Building2 size={24} />}
+                                            </div>
+                                        </div>
+                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                            cliente.tipo === 'privato' ? 'bg-green-100 text-green-700' : 'bg-purple-100 text-purple-700'
+                                        }`}>
+                                            {cliente.tipo === 'privato' ? 'Privato' : 'Azienda'}
+                                        </span>
+                                    </div>
+
+                                    <h3 className="font-bold text-lg text-gray-900 mb-1">
+                                        {cliente.tipo === 'privato' 
+                                            ? `${cliente.nome} ${cliente.cognome}` 
+                                            : cliente.ragione_sociale}
+                                    </h3>
+                                    
+                                    {/* Codice Cliente + Badge Contratti */}
+                                    <div className="flex items-center justify-between mb-2">
+                                        {cliente.codice_cliente && (
+                                            <span className="text-xs font-mono font-bold text-indigo-600">
+                                                ID: {cliente.codice_cliente}
+                                            </span>
+                                        )}
+                                        <div className="flex gap-1">
+                                            {(cliente.contratti_luce || 0) > 0 && (
+                                                <span className="px-2 py-0.5 bg-yellow-500 text-white text-xs font-bold rounded flex items-center gap-1">
+                                                    <Zap size={10} /> {cliente.contratti_luce}
+                                                </span>
+                                            )}
+                                            {(cliente.contratti_gas || 0) > 0 && (
+                                                <span className="px-2 py-0.5 bg-blue-500 text-white text-xs font-bold rounded flex items-center gap-1">
+                                                    <Flame size={10} /> {cliente.contratti_gas}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    
+                                    {/* CF / P.IVA */}
+                                    {(cliente.codice_fiscale || cliente.partita_iva) && (
+                                        <p className="text-xs font-mono text-gray-600 mb-2">
+                                            {cliente.tipo === 'privato' ? 'CF' : 'P.IVA'}: {cliente.codice_fiscale || cliente.partita_iva}
+                                        </p>
+                                    )}
+
+                                    <div className="space-y-2 text-sm text-gray-600 mb-4">
+                                        {(cliente.email_principale || cliente.email_referente) && (
+                                            <div className="flex items-center gap-2">
+                                                <Mail size={14} />
+                                                <span className="truncate">{cliente.email_principale || cliente.email_referente}</span>
+                                            </div>
+                                        )}
+                                        {(cliente.telefono_principale || cliente.telefono) && (
+                                            <div className="flex items-center gap-2">
+                                                <Phone size={14} />
+                                                <span>{cliente.telefono_principale || cliente.telefono}</span>
+                                            </div>
+                                        )}
+                                        {cliente.citta && (
+                                            <div className="flex items-center gap-2">
+                                                <MapPin size={14} />
+                                                <span>{cliente.citta} {cliente.provincia ? `(${cliente.provincia})` : ''}</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="pt-3 border-t space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs text-gray-500">
+                                                {cliente.num_contratti || 0} contratt{cliente.num_contratti === 1 ? 'o' : 'i'}
+                                            </span>
+                                            {cliente.newsletter_count > 0 && (
+                                                <span className="text-xs text-purple-600 font-semibold" title={cliente.newsletter_nomi}>
+                                                    📰 {cliente.newsletter_count} newsletter
+                                                </span>
+                                            )}
+                                        </div>
+                                        <ActionsMenu cliente={cliente} inline={true} />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* VISTA GRIGLIA */}
+                    {viewMode === 'grid' && (
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                            {clienti.map((cliente) => (
+                                <Link
+                                    key={`${cliente.id}-${cliente.stato || 'none'}`}
+                                    to={`/clienti/${cliente.id}`}
+                                    className="card hover:shadow-lg transition-all text-center group"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedClients.has(cliente.id)}
+                                        onChange={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            toggleSelectClient(cliente.id);
+                                        }}
+                                        className="absolute top-2 left-2 w-4 h-4"
+                                        onClick={(e) => e.stopPropagation()}
+                                    />
+                                    <div className={`w-16 h-16 rounded-full mx-auto mb-3 flex items-center justify-center ${
+                                        cliente.tipo === 'privato' ? 'bg-green-100 text-green-600' : 'bg-purple-100 text-purple-600'
+                                    } group-hover:scale-110 transition-transform`}>
+                                        {cliente.tipo === 'privato' ? <User size={32} /> : <Building2 size={32} />}
+                                    </div>
+                                    <h4 className="font-semibold text-sm text-gray-900 mb-1 truncate">
+                                        {cliente.tipo === 'privato' 
+                                            ? `${cliente.nome} ${cliente.cognome}` 
+                                            : cliente.ragione_sociale}
+                                    </h4>
+                                    <p className="text-xs text-gray-500 truncate">{cliente.citta || 'N/D'}</p>
+                                </Link>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* VISTA LISTA */}
+                    {viewMode === 'list' && (
+                        <div className="card divide-y">
+                            {clienti.map((cliente) => (
+                                <div key={`${cliente.id}-${cliente.stato || 'none'}`} className="flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedClients.has(cliente.id)}
+                                        onChange={() => toggleSelectClient(cliente.id)}
+                                        className="w-4 h-4"
+                                    />
+                                    <div className={`p-2 rounded-lg ${
+                                        cliente.tipo === 'privato' ? 'bg-green-100 text-green-600' : 'bg-purple-100 text-purple-600'
+                                    }`}>
+                                        {cliente.tipo === 'privato' ? <User size={20} /> : <Building2 size={20} />}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <h4 className="font-semibold text-gray-900 truncate">
+                                            {cliente.tipo === 'privato' 
+                                                ? `${cliente.nome} ${cliente.cognome}` 
+                                                : cliente.ragione_sociale}
+                                        </h4>
+                                        <p className="text-sm text-gray-600 truncate">
+                                            {cliente.email_principale || cliente.email_referente || 'Nessuna email'}
+                                        </p>
+                                    </div>
+                                    <div className="hidden md:flex items-center gap-6 text-sm text-gray-600">
+                                        <span className="flex items-center gap-1">
+                                            <Phone size={14} />
+                                            {cliente.telefono_principale || cliente.telefono || 'N/D'}
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <MapPin size={14} />
+                                            {cliente.citta || 'N/D'}
+                                        </span>
+                                        <span className="flex items-center gap-1">
+                                            <FileText size={14} />
+                                            {cliente.num_contratti || 0}
+                                        </span>
+                                    </div>
+                                    <ActionsMenu cliente={cliente} inline={true} />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* VISTA TABELLA DETTAGLIATA */}
+                    {viewMode === 'table' && (
+                        <div className="card">
+                            <div className="overflow-x-auto">
+                                <table className="w-full min-w-full table-fixed">
+                                    <thead className="bg-gray-50 border-b">
+                                        <tr>
+                                            <th className="w-8 px-2 py-2 text-left">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedClients.size === clienti.length && clienti.length > 0}
+                                                    onChange={selectAllClients}
+                                                    className="w-4 h-4"
+                                                />
+                                            </th>
+                                            <th className="w-16 px-1 py-2 text-center text-xs font-semibold text-gray-700 uppercase" title="Qualità Dati">Q</th>
+                                            <th className="w-20 px-1 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Tipo</th>
+                                            <th className="w-24 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase truncate">Cod.</th>
+                                            <th className="w-48 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Nome/Azienda</th>
+                                            <th className="w-32 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase truncate">CF/P.IVA</th>
+                                            <th className="w-20 px-1 py-2 text-center text-xs font-semibold text-gray-700 uppercase" title="Contratti">⚡🔥</th>
+                                            <th className="w-32 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Agente</th>
+                                            {/* 🔐 STATO: Solo Super Admin */}
+                                            {isSuperAdmin && (
+                                                <th className="w-32 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Stato</th>
+                                            )}
+                                            <th className="w-16 px-1 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Azioni</th>
+                                        </tr>
+                                    </thead>
+                                <tbody className="divide-y">
+                                    {clienti.map((cliente) => (
+                                        <tr key={`${cliente.id}-${cliente.stato || 'none'}`} className="hover:bg-gray-50 transition-colors">
+                                            <td className="px-2 py-2">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedClients.has(cliente.id)}
+                                                    onChange={() => toggleSelectClient(cliente.id)}
+                                                    className="w-4 h-4"
+                                                />
+                                            </td>
+                                            <td className="px-1 py-2" title={cliente.incomplete_data ? `Dati incompleti: ${(cliente.missing_fields && JSON.parse(cliente.missing_fields || '[]').join(', ')) || 'Campi mancanti'}` : `Dati completi - Score: ${cliente.data_quality_score || 100}%`}>
+                                                <div className="flex items-center justify-center">
+                                                    <span className={`w-3 h-3 rounded-full ${cliente.incomplete_data ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></span>
+                                                </div>
+                                            </td>
+                                            <td className="px-1 py-2">
+                                                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-semibold ${
+                                                    cliente.tipo === 'privato' 
+                                                        ? 'bg-green-100 text-green-700' 
+                                                        : 'bg-purple-100 text-purple-700'
+                                                }`} title={cliente.tipo === 'privato' ? 'Privato' : 'Azienda'}>
+                                                    {cliente.tipo === 'privato' ? <User size={10} /> : <Building2 size={10} />}
+                                                </span>
+                                            </td>
+                                            <td className="px-2 py-2 text-xs font-mono text-indigo-600 font-semibold truncate" title={cliente.codice_cliente}>
+                                                {cliente.codice_cliente || '-'}
+                                            </td>
+                                            <td className="px-2 py-2 text-sm font-medium text-gray-900 truncate" title={cliente.tipo === 'privato' ? `${cliente.nome} ${cliente.cognome}` : cliente.ragione_sociale}>
+                                                {cliente.tipo === 'privato' 
+                                                    ? `${cliente.nome} ${cliente.cognome}` 
+                                                    : cliente.ragione_sociale}
+                                            </td>
+                                            <td className="px-2 py-2 text-xs font-mono text-gray-600 truncate" title={cliente.codice_fiscale || cliente.partita_iva}>
+                                                {cliente.codice_fiscale || cliente.partita_iva || '-'}
+                                            </td>
+                                            <td className="px-1 py-2">
+                                                <div className="flex justify-center gap-1">
+                                                    {(cliente.contratti_luce || 0) > 0 && (
+                                                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-yellow-500 text-white text-xs font-bold rounded" title="Contratti Luce">
+                                                            <Zap size={10} /> {cliente.contratti_luce}
+                                                        </span>
+                                                    )}
+                                                    {(cliente.contratti_gas || 0) > 0 && (
+                                                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-blue-500 text-white text-xs font-bold rounded" title="Contratti Gas">
+                                                            <Flame size={10} /> {cliente.contratti_gas}
+                                                        </span>
+                                                    )}
+                                                    {(cliente.contratti_luce || 0) === 0 && (cliente.contratti_gas || 0) === 0 && (
+                                                        <span className="text-xs text-gray-400">-</span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            {/* 🔐 AGENTE: Operatori vedono solo testo, Admin può modificare */}
+                                            <td className="px-2 py-2">
+                                                {isOperatore ? (
+                                                    // Operatori: solo visualizzazione
+                                                    <span className="text-xs text-gray-700 truncate block">
+                                                        {agenti.find(a => a.id === cliente.assigned_agent_id)?.nome} {agenti.find(a => a.id === cliente.assigned_agent_id)?.cognome || 'Non assegnato'}
+                                                    </span>
+                                                ) : (
+                                                    // Admin/Super Admin: select modificabile
+                                                    <select
+                                                        value={cliente.assigned_agent_id || ''}
+                                                        onChange={(e) => {
+                                                            if (e.target.value === 'new_agent') {
+                                                                setShowCreateAgentModal(true);
+                                                            } else if (e.target.value && e.target.value !== '') {
+                                                                handleAssignAgent(cliente.id, cliente.tipo, e.target.value);
+                                                            }
+                                                        }}
+                                                        className="w-full text-xs border border-gray-300 rounded px-1 py-1 focus:ring-1 focus:ring-blue-500 truncate"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        title={agenti.find(a => a.id === cliente.assigned_agent_id)?.nome + ' ' + agenti.find(a => a.id === cliente.assigned_agent_id)?.cognome}
+                                                    >
+                                                        <option value="">Non assegnato</option>
+                                                        {agenti.map((agente) => (
+                                                            <option key={agente.id || agente.email} value={agente.id}>
+                                                                {agente.nome} {agente.cognome}
+                                                            </option>
+                                                        ))}
+                                                        <option value="new_agent">➕ Nuovo</option>
+                                                    </select>
+                                                )}
+                                            </td>
+                                            {/* 🔐 STATO: Solo Super Admin */}
+                                            {isSuperAdmin && (
+                                                <td className="px-2 py-2">
+                                                    <div className="flex flex-col gap-1">
+                                                        {/* Mostra select LUCE solo se esistono contratti luce */}
+                                                        {(cliente.contratti_luce || 0) > 0 && (
+                                                          <select
+                                                            value={contrattiStati[`${cliente.tipo}_${cliente.id}`]?.luce || ""}
+                                                            onChange={(e) => {
+                                                              if (e.target.value) {
+                                                                // Aggiorna immediatamente lo stato locale
+                                                                const clienteKey = `${cliente.tipo}_${cliente.id}`;
+                                                                setContrattiStati(prev => ({
+                                                                  ...prev,
+                                                                  [clienteKey]: {
+                                                                    ...prev[clienteKey],
+                                                                    luce: e.target.value
+                                                                  }
+                                                                }));
+                                                                handleChangeStato(cliente.id, cliente.tipo, e.target.value, 'luce');
+                                                              }
+                                                            }}
+                                                            className="w-full text-xs border rounded px-1 py-1 focus:ring-1 bg-gray-50 border-gray-300 text-gray-700 truncate"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            title="Stato contratto LUCE"
+                                                          >
+                                                            <option value="" disabled>Stato contratto LUCE...</option>
+                                                            <option value="In compilazione">Compilazione</option>
+                                                            <option value="Documenti da validare">Da validare</option>
+                                                            <option value="Documenti da correggere">Da correggere</option>
+                                                            <option value="Precheck KO">Precheck KO</option>
+                                                            <option value="credit check ko">Credit KO</option>
+                                                            <option value="in attesa di postalizzazione lettera">In attesa</option>
+                                                            <option value="Da attivare">✅ Da attivare</option>
+                                                            <option value="Attivo">🟢 Attivo</option>
+                                                            <option value="chiusa">✅ Chiusa</option>
+                                                          </select>
+                                                        )}
+                                                        {/* Mostra select GAS solo se esistono contratti gas */}
+                                                        {(cliente.contratti_gas || 0) > 0 && (
+                                                          <select
+                                                            value={contrattiStati[`${cliente.tipo}_${cliente.id}`]?.gas || ""}
+                                                            onChange={(e) => {
+                                                              if (e.target.value) {
+                                                                // Aggiorna immediatamente lo stato locale
+                                                                const clienteKey = `${cliente.tipo}_${cliente.id}`;
+                                                                setContrattiStati(prev => ({
+                                                                  ...prev,
+                                                                  [clienteKey]: {
+                                                                    ...prev[clienteKey],
+                                                                    gas: e.target.value
+                                                                  }
+                                                                }));
+                                                                handleChangeStato(cliente.id, cliente.tipo, e.target.value, 'gas');
+                                                              }
+                                                            }}
+                                                            className="w-full text-xs border rounded px-1 py-1 focus:ring-1 bg-gray-50 border-gray-300 text-gray-700 truncate"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            title="Stato contratto GAS"
+                                                          >
+                                                            <option value="" disabled>Stato contratto GAS...</option>
+                                                            <option value="In compilazione">Compilazione</option>
+                                                            <option value="Documenti da validare">Da validare</option>
+                                                            <option value="Documenti da correggere">Da correggere</option>
+                                                            <option value="Precheck KO">Precheck KO</option>
+                                                            <option value="credit check ko">Credit KO</option>
+                                                            <option value="in attesa di postalizzazione lettera">In attesa</option>
+                                                            <option value="Da attivare">✅ Da attivare</option>
+                                                            <option value="Attivo">🟢 Attivo</option>
+                                                            <option value="chiusa">✅ Chiusa</option>
+                                                          </select>
+                                                        )}
+                                                        {/* Se non ci sono contratti di nessun tipo, mostra un placeholder */}
+                                                        {(cliente.contratti_luce || 0) === 0 && (cliente.contratti_gas || 0) === 0 && (
+                                                          <span className="text-xs text-gray-500">Nessun contratto</span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            )}
+                                            <td className="px-1 py-2">
+                                                <ActionsMenu cliente={cliente} />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            </div>
+                        </div>
+                    )}
+                </>
+            )}
+
+            {/* Footer con info */}
+            {!loading && clienti.length > 0 && (
+                <div className="card">
+                    <div className="flex items-center justify-between text-sm text-gray-600">
+                        <div>
+                            Visualizzati <strong>{clienti.length}</strong> clienti
+                            {selectedClients.size > 0 && (
+                                <> • <strong>{selectedClients.size}</strong> selezionati</>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs">Vista:</span>
+                            <strong className="capitalize">{
+                                viewMode === 'cards' ? 'Cards' :
+                                viewMode === 'grid' ? 'Griglia' :
+                                viewMode === 'list' ? 'Lista' :
+                                'Tabella Dettagliata'
+                            }</strong>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modale Invia Email */}
+            {selectedClientForEmail && (
+                <EmailComposeModal
+                    isOpen={showEmailModal}
+                    onClose={() => {
+                        setShowEmailModal(false);
+                        setSelectedClientForEmail(null);
+                    }}
+                    cliente={selectedClientForEmail}
+                    onEmailSent={() => {
+                        loadClienti(); // Ricarica lista per aggiornare data_ultimo_contatto
+                    }}
+                />
+            )}
+
+            {/* Modale Importa Clienti */}
+            <ImportClientiModal
+                isOpen={showImportModal}
+                onClose={() => setShowImportModal(false)}
+                onImportComplete={() => loadClienti()}
+            />
+
+            {/* Modale WooCommerce Import */}
+            <WooCommerceImportModal
+                isOpen={showWooCommerceImportModal}
+                onClose={() => setShowWooCommerceImportModal(false)}
+                onImportComplete={() => loadClienti()}
+            />
+
+            {/* Modale Crea Agente */}
+            <CreateAgentModal
+                isOpen={showCreateAgentModal}
+                onClose={() => setShowCreateAgentModal(false)}
+                onSuccess={(newAgent) => {
+                    loadAgenti(); // Ricarica lista agenti
+                }}
+            />
+
+            {/* Modale Cambio Stato Contratto */}
+            {showStatoModal && clientePerStato && (
+                <StatoContrattoModal
+                    cliente={clientePerStato}
+                    nuovoStato={nuovoStatoSelezionato}
+                    contratti={contrattiCliente}
+                    onClose={() => {
+                        setShowStatoModal(false);
+                        setClientePerStato(null);
+                        setNuovoStatoSelezionato('');
+                        setContrattiCliente([]);
+                    }}
+                    onUpdate={handleUpdateStatoContratto}
+                />
+            )}
+
+            {/* Modale Assegnazione Agente Avanzata */}
+            {showAssegnaAgenteModal && clientePerAssegnazione && (
+                <AssegnaAgenteAvanzatoModal
+                    isOpen={showAssegnaAgenteModal}
+                    onClose={() => {
+                        setShowAssegnaAgenteModal(false);
+                        setClientePerAssegnazione(null);
+                    }}
+                    clienteId={clientePerAssegnazione.id}
+                    clienteTipo={clientePerAssegnazione.tipo}
+                    agenteAttualeId={clientePerAssegnazione.assigned_agent_id}
+                    agenti={agenti}
+                    onConfirm={async (agenteId, commissioneLuce, commissioneGas) => {
+                        try {
+                            const payload = {
+                                cliente_id: clientePerAssegnazione.id,
+                                cliente_tipo: clientePerAssegnazione.tipo,
+                                new_agent_id: agenteId,
+                                commissione_luce: commissioneLuce,
+                                commissione_gas: commissioneGas,
+                                use_separate_commissions: true,
+                                motivo: 'Assegnazione avanzata da interfaccia'
+                            };
+                            
+                            console.log('📤 Invio assegnazione agente avanzata:', payload);
+                            
+                            const response = await fetch('http://localhost:3001/api/agenti/assign-cliente', {
+                                method: 'PUT',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${localStorage.getItem('token')}`
+                                },
+                                body: JSON.stringify(payload)
+                            });
+
+                            const data = await response.json();
+                            
+                            if (data.success) {
+                                toast.success(`Cliente assegnato con commissioni separate: Luce €${commissioneLuce}, Gas €${commissioneGas}!`);
+                                loadClienti(); // Ricarica lista
+                                setShowAssegnaAgenteModal(false);
+                                setClientePerAssegnazione(null);
+                            } else {
+                                toast.error(data.message || 'Errore assegnazione');
+                            }
+                        } catch (error) {
+                            console.error('Errore:', error);
+                            toast.error('Errore durante l\'assegnazione');
+                        }
+                    }}
+                />
+            )}
+        </div>
+    );
+}

@@ -1,0 +1,91 @@
+/**
+ * Database SQLite - Configurazione semplificata
+ */
+
+import Database from 'better-sqlite3';
+import { randomUUID } from 'crypto';
+import path from 'path';
+
+const dbPath = path.join(__dirname, '../../gestionale_energia.db');
+const db = new Database(dbPath);
+
+db.pragma('foreign_keys = ON');
+
+console.log('✅ Database SQLite connesso:', dbPath);
+
+/**
+ * Pool compatibile con PostgreSQL
+ */
+export const pool = {
+    query: (text: string, params: any[] = []) => {
+        try {
+            // Converti $1, $2 in ?
+            let sqliteQuery = text;
+            for (let i = params.length; i >= 1; i--) {
+                sqliteQuery = sqliteQuery.replace(new RegExp(`\\$${i}`, 'g'), '?');
+            }
+            
+            // Converti NOW() PostgreSQL -> datetime('now') SQLite
+            sqliteQuery = sqliteQuery.replace(/NOW\(\)/gi, "datetime('now')");
+            
+            // Converti ILIKE -> LIKE (SQLite è case-insensitive di default)
+            sqliteQuery = sqliteQuery.replace(/ILIKE/gi, 'LIKE');
+            
+            // Converti INTERVAL (PostgreSQL) in equivalente SQLite
+            sqliteQuery = sqliteQuery.replace(/NOW\(\)\s*-\s*INTERVAL\s+'(\d+)\s+days?'/gi, "datetime('now', '-$1 days')");
+            
+            // Rimuovi RETURNING (non supportato)
+            const hasReturning = sqliteQuery.toUpperCase().includes('RETURNING');
+            if (hasReturning) {
+                sqliteQuery = sqliteQuery.replace(/RETURNING.*/gi, '');
+            }
+            
+            // Esegui query
+            if (sqliteQuery.trim().toUpperCase().startsWith('SELECT')) {
+                const stmt = db.prepare(sqliteQuery);
+                const rows = stmt.all(...params);
+                return Promise.resolve({ rows, rowCount: rows.length });
+            } else {
+                const stmt = db.prepare(sqliteQuery);
+                const result = stmt.run(...params);
+                
+                // Se è INSERT e aveva RETURNING, recupera il record
+                if (hasReturning && sqliteQuery.trim().toUpperCase().startsWith('INSERT')) {
+                    const tableName = sqliteQuery.match(/INSERT INTO\s+(\w+)/i)?.[1];
+                    if (tableName && result.lastInsertRowid) {
+                        const selectStmt = db.prepare(`SELECT * FROM ${tableName} WHERE rowid = ?`);
+                        const row = selectStmt.get(result.lastInsertRowid);
+                        return Promise.resolve({ rows: row ? [row] : [], rowCount: 1 });
+                    }
+                }
+                
+                return Promise.resolve({ rows: [], rowCount: result.changes });
+            }
+        } catch (error) {
+            console.error('❌ Errore query SQLite:', error);
+            return Promise.reject(error);
+        }
+    }
+};
+
+export async function testConnection(): Promise<boolean> {
+    try {
+        await pool.query('SELECT 1 as test');
+        console.log('✅ Test connessione SQLite OK');
+        return true;
+    } catch (error) {
+        console.error('❌ Errore connessione SQLite:', error);
+        return false;
+    }
+}
+
+export async function closePool() {
+    db.close();
+    console.log('🔌 Database SQLite chiuso');
+}
+
+export function generateUUID(): string {
+    return randomUUID();
+}
+
+export default { pool, testConnection, closePool, generateUUID };
