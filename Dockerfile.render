@@ -1,10 +1,15 @@
 # Dockerfile ottimizzato per Render.com
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Installa SQLite3 e altre dipendenze di sistema
-RUN apk add --no-cache sqlite
+# Installa SQLite3, Python e build tools necessari per node-gyp
+RUN apk add --no-cache \
+    sqlite \
+    python3 \
+    make \
+    g++ \
+    py3-pip
 
 # Copia i file package.json per il caching delle dipendenze
 COPY package*.json ./
