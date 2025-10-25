@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Applicazione principale (Backend + Frontend servito staticamente)
   app:

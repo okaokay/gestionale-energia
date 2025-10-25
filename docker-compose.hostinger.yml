@@ -1,6 +1,9 @@
 services:
   gestionale-energia:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gestionale-energia:latest
     container_name: gestionale-energia-app
     restart: unless-stopped
     environment:
