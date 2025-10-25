@@ -1350,7 +1350,7 @@ export default function ClienteDetailPage() {
                                                         <Edit size={16} /> Modifica
                                                     </button>
                                                     <button 
-                                                        onClick={() => toast.info('Invio email in arrivo!')}
+                                                        onClick={() => toast('Invio email in arrivo!')}
                                                         className="flex-1 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold flex items-center justify-center gap-2"
                                                     >
                                                         <Mail size={16} /> Email
@@ -1434,19 +1434,20 @@ export default function ClienteDetailPage() {
                             ) : (
                                 <div className="space-y-4">
                                     {emailStorico.map((email: any) => {
-                                        const tipoIcon = {
+                                        const tipoIcon: Record<string, string> = {
                                             'benvenuto': '🎉',
                                             'reminder': '💡',
                                             'riepilogo': '📊',
                                             'manuale': '✉️',
                                             'campagna': '📧'
-                                        }[email.tipo] || '📬';
+                                        };
+                                        const iconToShow = tipoIcon[email.tipo as string] || '📬';
                                         
                                         return (
                                             <div key={email.id} className="bg-white border-2 border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all">
                                                 <div className="flex items-start justify-between mb-4">
                                                     <div className="flex items-start gap-3 flex-1">
-                                                        <span className="text-3xl">{tipoIcon}</span>
+                                                        <span className="text-3xl">{iconToShow}</span>
                                                         <div className="flex-1">
                                                             <h3 className="text-lg font-bold text-gray-900 mb-1">{email.oggetto}</h3>
                                                             <p className="text-sm text-gray-600">

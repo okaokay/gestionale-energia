@@ -279,7 +279,7 @@ export default function ClientiPage() {
     // Gestione cambio stato cliente - supporta tipoContratto (luce/gas) e filtra i contratti
     const handleChangeStato = async (
         clienteId: number,
-        clienteTipo: string,
+        clienteTipo: 'privato' | 'azienda',
         nuovoStato: string,
         tipoContratto?: 'luce' | 'gas'
     ) => {
@@ -573,7 +573,7 @@ export default function ClientiPage() {
     };
 
     const handleAddContract = (clienteId: string) => {
-        toast.info('🔜 Funzione "Aggiungi Contratto" in sviluppo');
+        toast('🔜 Funzione "Aggiungi Contratto" in sviluppo');
     };
 
     const handleSendEmailMarketing = (cliente: any) => {
@@ -1559,7 +1559,7 @@ export default function ClientiPage() {
                                                                     luce: e.target.value
                                                                   }
                                                                 }));
-                                                                handleChangeStato(cliente.id, cliente.tipo, e.target.value, 'luce');
+                                                                handleChangeStato(cliente.id, cliente.tipo as 'privato' | 'azienda', e.target.value, 'luce');
                                                               }
                                                             }}
                                                             className="w-full text-xs border rounded px-1 py-1 focus:ring-1 bg-gray-50 border-gray-300 text-gray-700 truncate"
@@ -1593,7 +1593,7 @@ export default function ClientiPage() {
                                                                     gas: e.target.value
                                                                   }
                                                                 }));
-                                                                handleChangeStato(cliente.id, cliente.tipo, e.target.value, 'gas');
+                                                                handleChangeStato(cliente.id, cliente.tipo as 'privato' | 'azienda', e.target.value, 'gas');
                                                               }
                                                             }}
                                                             className="w-full text-xs border rounded px-1 py-1 focus:ring-1 bg-gray-50 border-gray-300 text-gray-700 truncate"
@@ -1712,7 +1712,6 @@ export default function ClientiPage() {
             {/* Modale Assegnazione Agente Avanzata */}
             {showAssegnaAgenteModal && clientePerAssegnazione && (
                 <AssegnaAgenteAvanzatoModal
-                    isOpen={showAssegnaAgenteModal}
                     onClose={() => {
                         setShowAssegnaAgenteModal(false);
                         setClientePerAssegnazione(null);
@@ -1720,7 +1719,6 @@ export default function ClientiPage() {
                     clienteId={clientePerAssegnazione.id}
                     clienteTipo={clientePerAssegnazione.tipo}
                     agenteAttualeId={clientePerAssegnazione.assigned_agent_id}
-                    agenti={agenti}
                     onConfirm={async (agenteId, commissioneLuce, commissioneGas) => {
                         try {
                             const payload = {

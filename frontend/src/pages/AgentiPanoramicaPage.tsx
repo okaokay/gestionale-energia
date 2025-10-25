@@ -402,14 +402,14 @@ export default function AgentiPanoramicaPage() {
                     <h3 className="text-lg font-semibold">Contatti Assegnati</h3>
                 </div>
                 
-                {(agente.clienti_privati?.length > 0 || agente.clienti_aziende?.length > 0) ? (
+                {((agente.clienti_privati?.length || 0) > 0 || (agente.clienti_aziende?.length || 0) > 0) ? (
                     <div className="space-y-4">
                         {/* Clienti Privati */}
-                        {agente.clienti_privati?.length > 0 && (
+                        {(agente.clienti_privati?.length || 0) > 0 && (
                             <div>
-                                <h4 className="font-medium text-gray-700 mb-2">Clienti Privati ({agente.clienti_privati.length})</h4>
+                                <h4 className="font-medium text-gray-700 mb-2">Clienti Privati ({agente.clienti_privati?.length || 0})</h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    {agente.clienti_privati.map((cliente: any) => (
+                                    {agente.clienti_privati?.map((cliente: any) => (
                                         <div key={cliente.id} className="bg-gray-50 rounded-lg p-3">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
@@ -436,11 +436,11 @@ export default function AgentiPanoramicaPage() {
                         )}
                         
                         {/* Clienti Aziende */}
-                        {agente.clienti_aziende?.length > 0 && (
+                        {(agente.clienti_aziende?.length || 0) > 0 && (
                             <div>
-                                <h4 className="font-medium text-gray-700 mb-2">Clienti Aziende ({agente.clienti_aziende.length})</h4>
+                                <h4 className="font-medium text-gray-700 mb-2">Clienti Aziende ({agente.clienti_aziende?.length || 0})</h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    {agente.clienti_aziende.map((cliente: any) => (
+                                    {agente.clienti_aziende?.map((cliente: any) => (
                                         <div key={cliente.id} className="bg-gray-50 rounded-lg p-3">
                                             <div className="flex items-center gap-3">
                                                 <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
@@ -478,7 +478,7 @@ export default function AgentiPanoramicaPage() {
                 )}
                 
                 {activeTab === 'payments' && (
-                    <AgentePagamenti agenteId={agente.id} />
+                    <AgentePagamenti agenteId={agente.id.toString()} />
                 )}
             </div>
         </div>

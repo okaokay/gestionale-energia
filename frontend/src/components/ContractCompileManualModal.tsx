@@ -139,7 +139,7 @@ export default function ContractCompileManualModal({ templates, onClose, onSucce
     // 🎲 GENERA DATI TEST COMPLETI
     const handleGeneraDatiTest = (tipo: 'luce' | 'gas' | 'dual') => {
         const random = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
-        const randomChoice = (arr: string[]) => arr[random(0, arr.length - 1)];
+        const randomChoice = <T,>(arr: T[]) => arr[random(0, arr.length - 1)];
         const randomDecimal = (min: number, max: number, decimals: number = 2) => 
             (Math.random() * (max - min) + min).toFixed(decimals);
         

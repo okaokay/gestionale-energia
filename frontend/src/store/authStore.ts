@@ -9,7 +9,7 @@ interface User {
     email: string;
     nome: string;
     cognome: string;
-    ruolo: 'super_admin' | 'admin' | 'operatore' | 'visualizzatore';
+    ruolo: 'super_admin' | 'admin' | 'operatore' | 'visualizzatore' | 'agent';
 }
 
 interface AuthState {

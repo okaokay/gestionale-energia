@@ -81,15 +81,15 @@ export default function ContrattiGestionePage() {
     };
 
     const handleSendEmail = (contratto: any) => {
-        toast.info('Invio email in sviluppo');
+        toast('Invio email in sviluppo');
     };
 
     const handleSendWhatsApp = (contratto: any) => {
-        toast.info('Invio WhatsApp in sviluppo');
+        toast('Invio WhatsApp in sviluppo');
     };
 
     const handleDownload = (contratto: any) => {
-        toast.info('Download PDF in sviluppo');
+        toast('Download PDF in sviluppo');
     };
 
     const handleDelete = async (contractId: string) => {
