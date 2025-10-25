@@ -453,34 +453,62 @@ export default function ClientiPage() {
         }
     };
 
-    const handleExportCSV = () => {
+    const handleExportCSV = async () => {
         const selected = clienti.filter(c => selectedClients.has(c.id));
         const dataToExport = selected.length > 0 ? selected : clienti;
         
-        // Crea CSV
-        const headers = ['Tipo', 'Nome', 'Email', 'Telefono', 'Città', 'Provincia', 'CF/P.IVA'];
-        const rows = dataToExport.map(c => [
-            c.tipo === 'privato' ? 'Privato' : 'Azienda',
-            c.tipo === 'privato' ? `${c.nome} ${c.cognome}` : c.ragione_sociale,
-            c.email_principale || c.email_referente || '',
-            c.telefono_principale || c.telefono || '',
-            c.citta || '',
-            c.provincia || '',
-            c.codice_fiscale || c.partita_iva || ''
-        ]);
-        
-        const csvContent = [
-            headers.join(','),
-            ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
-        ].join('\n');
-        
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `clienti_export_${new Date().toISOString().split('T')[0]}.csv`;
-        link.click();
-        
-        toast.success(`✅ ${dataToExport.length} clienti esportati!`);
+        if (dataToExport.length === 0) {
+            toast.error('Nessun cliente da esportare');
+            return;
+        }
+
+        try {
+            toast.loading('🔄 Preparazione export completo in corso...', { id: 'export-loading' });
+            
+            // Esporta tutti i dati completi per ogni cliente
+            const exportPromises = dataToExport.map(async (cliente) => {
+                try {
+                    const response = await clientiAPI.exportCompleto(
+                        cliente.tipo === 'privato' ? 'privato' : 'azienda', 
+                        cliente.id
+                    );
+                    return response.data;
+                } catch (error) {
+                    console.error(`Errore export cliente ${cliente.id}:`, error);
+                    return null;
+                }
+            });
+
+            const exportResults = await Promise.all(exportPromises);
+            const validExports = exportResults.filter(result => result !== null);
+
+            if (validExports.length === 0) {
+                toast.error('❌ Errore durante l\'export dei clienti', { id: 'export-loading' });
+                return;
+            }
+
+            // Crea un JSON con tutti i dati completi
+            const exportData = {
+                metadata: {
+                    export_date: new Date().toISOString(),
+                    total_clients: validExports.length,
+                    export_type: 'complete_client_data'
+                },
+                clients: validExports
+            };
+
+            const jsonContent = JSON.stringify(exportData, null, 2);
+            const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `export_completo_clienti_${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            
+            toast.success(`✅ Export completo di ${validExports.length} clienti completato!`, { id: 'export-loading' });
+        } catch (error) {
+            console.error('Errore durante l\'export:', error);
+            toast.error('❌ Errore durante l\'export dei clienti', { id: 'export-loading' });
+        }
     };
 
     const handleBulkEmail = () => {
@@ -608,25 +636,29 @@ export default function ClientiPage() {
         }
     };
 
-    const handleExportSingleClient = (cliente: any) => {
-        const data = {
-            tipo: cliente.tipo,
-            nome: cliente.tipo === 'privato' ? `${cliente.nome} ${cliente.cognome}` : cliente.ragione_sociale,
-            email: cliente.email_principale || cliente.email_referente || '',
-            telefono: cliente.telefono_principale || cliente.telefono || '',
-            citta: cliente.citta || '',
-            provincia: cliente.provincia || '',
-            cf_piva: cliente.codice_fiscale || cliente.partita_iva || ''
-        };
-
-        const csvContent = Object.keys(data).map(key => `${key},${data[key as keyof typeof data]}`).join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `cliente_${cliente.id}_${new Date().toISOString().split('T')[0]}.csv`;
-        link.click();
-        
-        toast.success('📥 Dati cliente esportati!');
+    const handleExportSingleClient = async (cliente: any) => {
+        try {
+            const response = await clientiAPI.exportCompleto(cliente.tipo === 'privato' ? 'privato' : 'azienda', cliente.id);
+            const exportData = response.data;
+            
+            // Crea un JSON formattato con tutti i dati del cliente
+            const jsonContent = JSON.stringify(exportData, null, 2);
+            const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            
+            const nomeCliente = cliente.tipo === 'privato' 
+                ? `${cliente.nome}_${cliente.cognome}` 
+                : cliente.ragione_sociale.replace(/[^a-zA-Z0-9]/g, '_');
+            
+            link.download = `export_completo_${nomeCliente}_${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+            
+            toast.success('📥 Export completo cliente completato!');
+        } catch (error) {
+            console.error('Errore durante l\'export:', error);
+            toast.error('❌ Errore durante l\'export del cliente');
+        }
     };
 
     const activeFiltersCount = Object.values(filters).filter(v => v !== '').length;

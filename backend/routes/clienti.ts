@@ -1814,5 +1814,229 @@ router.post('/woocommerce-import', upload.single('file'), async (req: Request, r
     }
 });
 
+/**
+ * GET /api/clienti/:tipo/:id/export-complete
+ * Esportazione completa di tutti i dati del cliente
+ * Include: dati cliente, contratti, documenti, email, note, storico eventi
+ */
+router.get('/:tipo/:id/export-complete', validateUUID('id'), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const { tipo, id } = req.params;
+        
+        if (!['privato', 'azienda'].includes(tipo)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Tipo cliente non valido. Utilizzare "privato" o "azienda"'
+            });
+        }
+
+        // 1. DATI CLIENTE BASE
+        let clienteData: any = {};
+        
+        if (tipo === 'privato') {
+            const clienteResult = await pool.query(`
+                SELECT 
+                    cp.*,
+                    u.nome || ' ' || u.cognome as agente_nome,
+                    u.email as agente_email
+                FROM clienti_privati cp
+                LEFT JOIN users u ON cp.assigned_agent_id = u.id
+                WHERE cp.id = ?
+            `, [id]);
+            
+            if (clienteResult.rowCount === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Cliente privato non trovato'
+                });
+            }
+            
+            clienteData = clienteResult.rows[0];
+        } else {
+            const clienteResult = await pool.query(`
+                SELECT 
+                    ca.*,
+                    u.nome || ' ' || u.cognome as agente_nome,
+                    u.email as agente_email
+                FROM clienti_aziende ca
+                LEFT JOIN users u ON ca.assigned_agent_id = u.id
+                WHERE ca.id = ?
+            `, [id]);
+            
+            if (clienteResult.rowCount === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Cliente azienda non trovato'
+                });
+            }
+            
+            clienteData = clienteResult.rows[0];
+        }
+
+        // 2. CONTRATTI LUCE
+        const contrattiLuceResult = await pool.query(`
+            SELECT 
+                cl.*,
+                sp.data_modifica as ultima_modifica_prezzo,
+                sp.prezzo_energia as ultimo_prezzo_energia,
+                sp.prezzo_trasporto as ultimo_prezzo_trasporto
+            FROM contratti_luce cl
+            LEFT JOIN storico_prezzi sp ON cl.id = sp.contratto_id AND sp.tipo_contratto = 'luce'
+            WHERE cl.${tipo === 'privato' ? 'cliente_privato_id' : 'cliente_azienda_id'} = ?
+            ORDER BY cl.data_attivazione DESC
+        `, [id]);
+
+        // 3. CONTRATTI GAS
+        const contrattiGasResult = await pool.query(`
+            SELECT 
+                cg.*,
+                sp.data_modifica as ultima_modifica_prezzo,
+                sp.prezzo_energia as ultimo_prezzo_energia,
+                sp.prezzo_trasporto as ultimo_prezzo_trasporto
+            FROM contratti_gas cg
+            LEFT JOIN storico_prezzi sp ON cg.id = sp.contratto_id AND sp.tipo_contratto = 'gas'
+            WHERE cg.${tipo === 'privato' ? 'cliente_privato_id' : 'cliente_azienda_id'} = ?
+            ORDER BY cg.data_attivazione DESC
+        `, [id]);
+
+        // 4. DOCUMENTI
+        const documentiResult = await pool.query(`
+            SELECT 
+                d.*,
+                u.nome || ' ' || u.cognome as caricato_da_nome
+            FROM documenti d
+            LEFT JOIN users u ON d.caricato_da = u.id
+            WHERE d.cliente_id = ? AND d.cliente_tipo = ?
+            ORDER BY d.data_caricamento DESC
+        `, [id, tipo]);
+
+        // 5. EMAIL INVIATE
+        const emailResult = await pool.query(`
+            SELECT 
+                ei.*,
+                u.nome || ' ' || u.cognome as mittente_nome,
+                u.email as mittente_email
+            FROM email_inviate ei
+            LEFT JOIN users u ON ei.mittente_id = u.id
+            WHERE ei.cliente_id = ? AND ei.cliente_tipo = ?
+            ORDER BY ei.data_invio DESC
+        `, [id, tipo]);
+
+        // 6. NOTE
+        const noteResult = await pool.query(`
+            SELECT 
+                n.*,
+                u.nome || ' ' || u.cognome as autore_nome
+            FROM note n
+            LEFT JOIN users u ON n.autore_id = u.id
+            WHERE n.cliente_id = ? AND n.cliente_tipo = ?
+            ORDER BY n.created_at DESC
+        `, [id, tipo]);
+
+        // 7. STORICO EVENTI (AUDIT LOG)
+        const storicoResult = await pool.query(`
+            SELECT 
+                al.*,
+                u.nome || ' ' || u.cognome as utente_nome
+            FROM audit_log al
+            LEFT JOIN users u ON al.utente_id = u.id
+            WHERE al.cliente_id = ? AND al.cliente_tipo = ?
+            ORDER BY al.timestamp DESC
+        `, [id, tipo]);
+
+        // 8. STORICO PROCEDURE CONTRATTI
+        const storicoProcedureResult = await pool.query(`
+            SELECT 
+                sp.*,
+                u.nome || ' ' || u.cognome as utente_nome
+            FROM storico_procedure sp
+            LEFT JOIN users u ON sp.utente_id = u.id
+            WHERE sp.contratto_id IN (
+                SELECT id FROM contratti_luce WHERE ${tipo === 'privato' ? 'cliente_privato_id' : 'cliente_azienda_id'} = ?
+                UNION
+                SELECT id FROM contratti_gas WHERE ${tipo === 'privato' ? 'cliente_privato_id' : 'cliente_azienda_id'} = ?
+            )
+            ORDER BY sp.data_procedura DESC
+        `, [id, id]);
+
+        // 9. CONSENSI GDPR
+        const consensiResult = await pool.query(`
+            SELECT *
+            FROM consensi_gdpr
+            WHERE cliente_id = ? AND cliente_tipo = ?
+            ORDER BY data_consenso DESC
+        `, [id, tipo]);
+
+        // 10. TASKS ASSOCIATI
+        const tasksResult = await pool.query(`
+            SELECT 
+                t.*,
+                u.nome || ' ' || u.cognome as assegnato_a_nome
+            FROM tasks t
+            LEFT JOIN users u ON t.assegnato_a = u.id
+            WHERE t.cliente_id = ? AND t.cliente_tipo = ?
+            ORDER BY t.data_scadenza ASC
+        `, [id, tipo]);
+
+        // Costruisci la risposta completa
+        const exportData = {
+            cliente: {
+                tipo: tipo,
+                dati: clienteData,
+                statistiche: {
+                    contratti_luce: contrattiLuceResult.rowCount,
+                    contratti_gas: contrattiGasResult.rowCount,
+                    documenti: documentiResult.rowCount,
+                    email_inviate: emailResult.rowCount,
+                    note: noteResult.rowCount,
+                    eventi_storico: storicoResult.rowCount,
+                    procedure_contratti: storicoProcedureResult.rowCount,
+                    tasks: tasksResult.rowCount
+                }
+            },
+            contratti: {
+                luce: contrattiLuceResult.rows,
+                gas: contrattiGasResult.rows
+            },
+            documenti: documentiResult.rows,
+            comunicazioni: {
+                email: emailResult.rows
+            },
+            note: noteResult.rows,
+            storico: {
+                eventi: storicoResult.rows,
+                procedure_contratti: storicoProcedureResult.rows
+            },
+            consensi_gdpr: consensiResult.rows,
+            tasks: tasksResult.rows,
+            metadata: {
+                data_esportazione: new Date().toISOString(),
+                versione_export: '1.0',
+                totale_record: {
+                    contratti_luce: contrattiLuceResult.rowCount,
+                    contratti_gas: contrattiGasResult.rowCount,
+                    documenti: documentiResult.rowCount,
+                    email: emailResult.rowCount,
+                    note: noteResult.rowCount,
+                    eventi: storicoResult.rowCount,
+                    procedure: storicoProcedureResult.rowCount,
+                    consensi: consensiResult.rowCount,
+                    tasks: tasksResult.rowCount
+                }
+            }
+        };
+
+        res.json({
+            success: true,
+            data: exportData,
+            message: 'Esportazione completa dati cliente completata con successo'
+        });
+
+    } catch (error) {
+        console.error('Errore esportazione completa cliente:', error);
+        next(error);
+    }
+});
+
 export default router;
 

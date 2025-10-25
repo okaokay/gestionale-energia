@@ -77,6 +77,10 @@ export const clientiAPI = {
     
     cancellaNewsletter: (tipo: 'privati' | 'aziende', clienteId: string, newsletterId: string) =>
         api.delete(`/clienti/${tipo}/${clienteId}/newsletter/${newsletterId}`),
+    
+    // Export completo cliente
+    exportCompleto: (tipo: 'privato' | 'azienda', id: string) => 
+        api.get(`/clienti/${tipo}/${id}/export-complete`),
 };
 
 // ============ CONTRATTI ============
