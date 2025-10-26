@@ -12,7 +12,7 @@ RUN npm run build
 FROM node:18-alpine AS backend-builder
 WORKDIR /app/backend
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 COPY backend/ ./backend/
 COPY tsconfig.json ./
 RUN npm run build
