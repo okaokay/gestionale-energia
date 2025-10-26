@@ -16,6 +16,7 @@ services:
       - JWT_SECRET=hostinger-gestionale-energia-jwt-secret-2024
       - JWT_EXPIRES_IN=7d
       - DATABASE_PATH=/app/gestionale_energia.db
+      - INIT_DB=true
     ports:
       - "8080:3001"
     volumes:

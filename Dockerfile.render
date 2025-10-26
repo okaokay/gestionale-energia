@@ -47,8 +47,9 @@ RUN npm prune --production
 RUN mkdir -p uploads/temp uploads/contracts uploads/documenti uploads/clienti uploads/contract_templates
 RUN mkdir -p backend/database
 
-# Inizializza il database vuoto
+# Inizializza il database con tutte le tabelle
 RUN touch /app/gestionale_energia.db
+RUN node dist/backend/database/migrate-sqlite.js
 
 # Variabili d'ambiente per Render
 ENV NODE_ENV=production
