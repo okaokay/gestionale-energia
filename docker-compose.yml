@@ -1,82 +1,30 @@
 services:
-  # Applicazione principale - Modalità sviluppo (default)
-  app:
+  gestionale-energia:
     build:
       context: .
-      dockerfile: Dockerfile.dev
-    container_name: gestionale_energia_app
-    restart: unless-stopped
-    environment:
-      - NODE_ENV=development
-      - PORT=3001
-      - TZ=Europe/Rome
-      - JWT_SECRET=${JWT_SECRET:-gestionale-energia-jwt-secret-2024}
-      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
-      - DATABASE_PATH=/app/backend/database/database.sqlite
-      - BREVO_API_KEY=${BREVO_API_KEY:-}
-      - BREVO_SENDER_EMAIL=${BREVO_SENDER_EMAIL:-}
-      - BREVO_SENDER_NAME=${BREVO_SENDER_NAME:-Gestionale Energia}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-    ports:
-      - "3001:3001"  # Backend API
-      - "5173:5173"  # Frontend Vite dev server
-    volumes:
-      # Monta il codice sorgente per hot-reload
-      - .:/app
-      - /app/node_modules
-      - /app/frontend/node_modules
-      # Persiste uploads e database
-      - uploads_data:/app/uploads
-      - database_data:/app/backend/database
-    networks:
-      - gestionale_network
-    stdin_open: true
-    tty: true
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # Applicazione in modalità produzione
-  app-prod:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: gestionale_energia_prod
+      dockerfile: Dockerfile.render
+    container_name: gestionale-energia-app
     restart: unless-stopped
     environment:
       - NODE_ENV=production
       - PORT=3001
       - TZ=Europe/Rome
-      - JWT_SECRET=${JWT_SECRET:-gestionale-energia-jwt-secret-2024}
-      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
-      - DATABASE_PATH=/app/backend/database/database.sqlite
-      - BREVO_API_KEY=${BREVO_API_KEY:-}
-      - BREVO_SENDER_EMAIL=${BREVO_SENDER_EMAIL:-}
-      - BREVO_SENDER_NAME=${BREVO_SENDER_NAME:-Gestionale Energia}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - JWT_SECRET=your-super-secret-jwt-key-change-this-hostinger-2024
+      - JWT_EXPIRES_IN=7d
+      - DATABASE_PATH=/app/gestionale_energia.db
+      - FRONTEND_URL=http://localhost:8080
+      - BACKEND_URL=http://localhost:8080
     ports:
-      - "80:80"      # Nginx frontend
-      - "3001:3001"  # Backend API
+      - "8080:3001"
     volumes:
       - uploads_data:/app/uploads
-      - database_data:/app/backend/database
-    networks:
-      - gestionale_network
-    profiles:
-      - production
+      - database_data:/app
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
-
-networks:
-  gestionale_network:
-    driver: bridge
+      start_period: 60s
 
 volumes:
   uploads_data:
