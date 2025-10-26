@@ -1,19 +1,21 @@
+# Configurazione Docker Compose per Hostinger
+# Usa Dockerfile.render per build ottimizzato
+version: '3.8'
+
 services:
   gestionale-energia:
     build:
       context: .
       dockerfile: Dockerfile.render
-    container_name: gestionale-energia-app
+    container_name: gestionale-energia-hostinger
     restart: unless-stopped
     environment:
       - NODE_ENV=production
       - PORT=3001
       - TZ=Europe/Rome
-      - JWT_SECRET=your-super-secret-jwt-key-change-this-hostinger-2024
+      - JWT_SECRET=hostinger-gestionale-energia-jwt-secret-2024
       - JWT_EXPIRES_IN=7d
       - DATABASE_PATH=/app/gestionale_energia.db
-      - FRONTEND_URL=http://localhost:8080
-      - BACKEND_URL=http://localhost:8080
     ports:
       - "8080:3001"
     volumes:
