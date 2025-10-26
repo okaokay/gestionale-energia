@@ -184,65 +184,110 @@ async function runMigration() {
         
         console.log('✅ Tabella ai_matches creata');
         
-        // Tabella email campaigns
-        db.exec(`
-            CREATE TABLE IF NOT EXISTS email_campaigns (
-                id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-                nome_campagna TEXT NOT NULL,
-                tipologia TEXT NOT NULL,
-                target_clienti TEXT NOT NULL,
-                offerta_id TEXT,
-                stato TEXT DEFAULT 'bozza',
-                data_schedulata TEXT,
-                data_invio_effettivo TEXT,
-                totale_destinatari INTEGER DEFAULT 0,
-                invii_riusciti INTEGER DEFAULT 0,
-                invii_falliti INTEGER DEFAULT 0,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (offerta_id) REFERENCES offerte(id) ON DELETE SET NULL
-            );
-        `);
-        
-        console.log('✅ Tabella email_campaigns creata');
-        
-        // Tabella email templates
+        // ===============================================
+        // TABELLA: email_templates (completa)
+        // ===============================================
+        console.log('📧 Creazione tabella email_templates...');
         db.exec(`
             CREATE TABLE IF NOT EXISTS email_templates (
-                id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-                nome_template TEXT NOT NULL,
-                tipologia TEXT NOT NULL,
-                oggetto TEXT NOT NULL,
-                corpo_html TEXT NOT NULL,
+                id TEXT PRIMARY KEY,
+                nome TEXT NOT NULL,
+                tipo TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                html_content TEXT NOT NULL,
+                placeholders TEXT,
                 attivo INTEGER DEFAULT 1,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        console.log('✅ Tabella email_templates creata');
+
+        // ===============================================
+        // TABELLA: email_campaigns (completa con scheduled_at)
+        // ===============================================
+        console.log('📧 Creazione tabella email_campaigns...');
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS email_campaigns (
+                id TEXT PRIMARY KEY,
+                nome TEXT NOT NULL,
+                offerta_id TEXT,
+                template_id TEXT,
+                tipo TEXT NOT NULL,
+                stato TEXT DEFAULT 'bozza',
+                target_clienti TEXT NOT NULL,
+                total_recipients INTEGER DEFAULT 0,
+                sent_count INTEGER DEFAULT 0,
+                delivered_count INTEGER DEFAULT 0,
+                opened_count INTEGER DEFAULT 0,
+                clicked_count INTEGER DEFAULT 0,
+                failed_count INTEGER DEFAULT 0,
+                scheduled_at TEXT,
+                started_at TEXT,
+                completed_at TEXT,
+                creato_da TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (offerta_id) REFERENCES offerte(id) ON DELETE SET NULL,
+                FOREIGN KEY (template_id) REFERENCES email_templates(id) ON DELETE SET NULL,
+                FOREIGN KEY (creato_da) REFERENCES users(id)
             );
         `);
         
-        console.log('✅ Tabella email_templates creata');
-        
-        // Tabella email logs
+        // Indici per performance
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_campaigns_stato ON email_campaigns(stato);
+        `);
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_campaigns_tipo ON email_campaigns(tipo);
+        `);
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_campaigns_created ON email_campaigns(created_at);
+        `);
+        console.log('✅ Tabella email_campaigns creata con indici');
+
+        // ===============================================
+        // TABELLA: email_logs (completa)
+        // ===============================================
+        console.log('📧 Creazione tabella email_logs...');
         db.exec(`
             CREATE TABLE IF NOT EXISTS email_logs (
-                id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-                campagna_id TEXT,
-                destinatario_email TEXT NOT NULL,
+                id TEXT PRIMARY KEY,
+                campaign_id TEXT,
                 cliente_privato_id TEXT,
                 cliente_azienda_id TEXT,
-                oggetto TEXT NOT NULL,
-                stato_invio TEXT DEFAULT 'in_attesa',
-                aperta INTEGER DEFAULT 0,
-                click_link INTEGER DEFAULT 0,
-                data_apertura TEXT,
-                inviato_at TEXT,
-                errore TEXT,
+                tipo_cliente TEXT,
+                email_destinatario TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                html_content TEXT,
+                stato TEXT DEFAULT 'pending',
+                brevo_message_id TEXT,
+                sent_at TEXT,
+                delivered_at TEXT,
+                opened_at TEXT,
+                clicked_at TEXT,
+                bounced_at TEXT,
+                error_message TEXT,
+                tracking_data TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (campagna_id) REFERENCES email_campaigns(id) ON DELETE CASCADE,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (campaign_id) REFERENCES email_campaigns(id) ON DELETE CASCADE,
                 FOREIGN KEY (cliente_privato_id) REFERENCES clienti_privati(id) ON DELETE CASCADE,
                 FOREIGN KEY (cliente_azienda_id) REFERENCES clienti_aziende(id) ON DELETE CASCADE
             );
         `);
         
-        console.log('✅ Tabella email_logs creata');
+        // Indici per performance
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_logs_campaign ON email_logs(campaign_id);
+        `);
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_logs_stato ON email_logs(stato);
+        `);
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_logs_email ON email_logs(email_destinatario);
+        `);
+        console.log('✅ Tabella email_logs creata con indici');
         
         console.log('\n✨ Migrazione SQLite completata con successo!');
         console.log('\n🎯 Database pronto all\'uso:');
