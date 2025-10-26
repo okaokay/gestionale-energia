@@ -6,7 +6,7 @@ import Database from 'better-sqlite3';
 import { randomUUID } from 'crypto';
 import path from 'path';
 
-const dbPath = path.join(__dirname, '../../gestionale_energia.db');
+const dbPath = path.join(process.cwd(), 'gestionale_energia.db');
 const db = new Database(dbPath);
 
 db.pragma('foreign_keys = ON');
