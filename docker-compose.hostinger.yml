@@ -2,7 +2,7 @@ services:
   gestionale-energia:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.render
     container_name: gestionale-energia-app
     restart: unless-stopped
     environment:
@@ -11,13 +11,14 @@ services:
       - TZ=Europe/Rome
       - JWT_SECRET=your-super-secret-jwt-key-change-this-hostinger-2024
       - JWT_EXPIRES_IN=7d
-      - DATABASE_PATH=/app/backend/database/database.sqlite
+      - DATABASE_PATH=/app/gestionale_energia.db
+      - FRONTEND_URL=http://localhost:8080
+      - BACKEND_URL=http://localhost:8080
     ports:
-      - "8080:80"
-      - "8081:3001"
+      - "8080:3001"
     volumes:
       - uploads_data:/app/uploads
-      - database_data:/app/backend/database
+      - database_data:/app
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
       interval: 30s
