@@ -38,6 +38,9 @@ WORKDIR /app
 # Compila TypeScript del backend
 RUN npm run build
 
+# Esegui le migrazioni del database per creare tutte le tabelle necessarie
+RUN npm run db:migrate
+
 # Espone solo la porta del backend per produzione
 EXPOSE 3001
 
