@@ -34,6 +34,7 @@ import contrattiGestioneRoutes from './routes/contratti-gestione-new'; // 🆕 N
 import contrattiCompilazioneRoutes from './routes/contratti-compilazione';
 import contrattiPdfRoutes from './routes/contratti-pdf';
 import storicoProcedureRoutes from './routes/storico-procedure';
+import unifiedImportRoutes from './routes/unified-import'; // 🆕 SISTEMA IMPORT UNIFICATO
 
 dotenv.config();
 
@@ -82,6 +83,7 @@ app.use('/api/storico', storicoRoutes);
 app.use('/api/contratti-gestione', contrattiGestioneRoutes);
 app.use('/api/contratti-compilazione', contrattiCompilazioneRoutes);
 app.use('/api/contratti-pdf', contrattiPdfRoutes);
+app.use('/api/unified-import', unifiedImportRoutes); // 🆕 SISTEMA IMPORT UNIFICATO
 
 // 404 handler
 app.use(notFoundHandler);
@@ -131,6 +133,9 @@ async function startServer() {
             console.log('   GET    /api/dashboard/stats');
             console.log('   GET    /api/emails/campaigns');
             console.log('   POST   /api/emails/campaigns');
+            console.log('   POST   /api/unified-import/upload (Import CSV/Excel)');
+            console.log('   POST   /api/unified-import/validate (Validazione file)');
+            console.log('   GET    /api/unified-import/supported-types');
             console.log('='.repeat(60));
             console.log('\n✅ Pronto per ricevere richieste!\n');
         });

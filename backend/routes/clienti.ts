@@ -5,7 +5,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { pool } from '../config/database';
 import { authenticate, authorize } from '../middleware/auth';
-import { validateClientePrivato, validateClienteAzienda, validateUUID, validatePagination } from '../middleware/validators';
+import { validateClientePrivato, validateClienteAzienda, validateUUID, validatePagination, validateFlexibleId } from '../middleware/validators';
 import multer from 'multer';
 import { parse } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
@@ -92,8 +92,8 @@ router.get('/', validatePagination, async (req: Request, res: Response, next: Ne
                     cp.commissione_pagata,
                     (SELECT COUNT(*) FROM contratti_luce WHERE cliente_privato_id = cp.id) as contratti_luce,
                     (SELECT COUNT(*) FROM contratti_gas WHERE cliente_privato_id = cp.id) as contratti_gas,
-                    (SELECT stato FROM contratti_luce WHERE cliente_privato_id = cp.id ORDER BY data_attivazione DESC LIMIT 1) as stato_contratto_luce,
-                    (SELECT stato FROM contratti_gas WHERE cliente_privato_id = cp.id ORDER BY data_attivazione DESC LIMIT 1) as stato_contratto_gas,
+                    (SELECT stato FROM contratti_luce WHERE cliente_privato_id = cp.id ORDER BY data_inizio DESC LIMIT 1) as stato_contratto_luce,
+                    (SELECT stato FROM contratti_gas WHERE cliente_privato_id = cp.id ORDER BY data_inizio DESC LIMIT 1) as stato_contratto_gas,
                     (SELECT GROUP_CONCAT(n.nome, ', ') 
                      FROM clienti_newsletter cn 
                      JOIN newsletter n ON cn.newsletter_id = n.id 
@@ -131,7 +131,12 @@ router.get('/', validatePagination, async (req: Request, res: Response, next: Ne
             const aziendeQuery = `
                 SELECT 
                     'azienda' as tipo,
-                    ca.id, ca.ragione_sociale, ca.partita_iva, ca.codice_cliente,
+                    ca.id, 
+                    ca.ragione_sociale as nome,
+                    NULL as cognome,
+                    ca.ragione_sociale, 
+                    ca.partita_iva, 
+                    ca.codice_cliente,
                     ca.email_referente as email, 
                     ca.telefono_referente as telefono,
                     ca.citta_sede_legale as citta, 
@@ -148,8 +153,8 @@ router.get('/', validatePagination, async (req: Request, res: Response, next: Ne
                     ca.commissione_pagata,
                     (SELECT COUNT(*) FROM contratti_luce WHERE cliente_azienda_id = ca.id) as contratti_luce,
                     (SELECT COUNT(*) FROM contratti_gas WHERE cliente_azienda_id = ca.id) as contratti_gas,
-                    (SELECT stato FROM contratti_luce WHERE cliente_azienda_id = ca.id ORDER BY data_attivazione DESC LIMIT 1) as stato_contratto_luce,
-                    (SELECT stato FROM contratti_gas WHERE cliente_azienda_id = ca.id ORDER BY data_attivazione DESC LIMIT 1) as stato_contratto_gas,
+                    (SELECT stato FROM contratti_luce WHERE cliente_azienda_id = ca.id ORDER BY data_inizio DESC LIMIT 1) as stato_contratto_luce,
+                    (SELECT stato FROM contratti_gas WHERE cliente_azienda_id = ca.id ORDER BY data_inizio DESC LIMIT 1) as stato_contratto_gas,
                     (SELECT GROUP_CONCAT(n.nome, ', ') 
                      FROM clienti_newsletter cn 
                      JOIN newsletter n ON cn.newsletter_id = n.id 
@@ -223,7 +228,7 @@ router.get('/', validatePagination, async (req: Request, res: Response, next: Ne
  * GET /api/clienti/privati/:id
  * Dettaglio cliente privato
  */
-router.get('/privati/:id', validateUUID('id'), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/privati/:id', validateFlexibleId('id'), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const result = await pool.query(
             'SELECT * FROM clienti_privati WHERE id = ?',
@@ -239,12 +244,12 @@ router.get('/privati/:id', validateUUID('id'), async (req: Request, res: Respons
         
         // Recupera anche i contratti associati
         const contrattiLuce = await pool.query(
-            'SELECT * FROM contratti_luce WHERE cliente_privato_id = $1 ORDER BY data_attivazione DESC',
+            'SELECT * FROM contratti_luce WHERE cliente_privato_id = $1 ORDER BY data_inizio DESC',
             [req.params.id]
         );
         
         const contrattiGas = await pool.query(
-            'SELECT * FROM contratti_gas WHERE cliente_privato_id = $1 ORDER BY data_attivazione DESC',
+            'SELECT * FROM contratti_gas WHERE cliente_privato_id = $1 ORDER BY data_inizio DESC',
             [req.params.id]
         );
         
@@ -333,7 +338,7 @@ router.post('/privati', authorize('operatore', 'admin', 'super_admin'), validate
  * PUT /api/clienti/privati/:id
  * Aggiorna cliente privato
  */
-router.put('/privati/:id', authorize('operatore', 'admin', 'super_admin'), validateUUID('id'), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/privati/:id', authorize('operatore', 'admin', 'super_admin'), validateFlexibleId('id'), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const updates: string[] = [];
         const values: any[] = [];
@@ -395,7 +400,7 @@ router.put('/privati/:id', authorize('operatore', 'admin', 'super_admin'), valid
  * GET /api/clienti/aziende/:id
  * Dettaglio cliente azienda
  */
-router.get('/aziende/:id', validateUUID('id'), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/aziende/:id', validateFlexibleId('id'), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const result = await pool.query(
             'SELECT * FROM clienti_aziende WHERE id = ?',
@@ -411,12 +416,12 @@ router.get('/aziende/:id', validateUUID('id'), async (req: Request, res: Respons
         
         // Recupera contratti
         const contrattiLuce = await pool.query(
-            'SELECT * FROM contratti_luce WHERE cliente_azienda_id = $1 ORDER BY data_attivazione DESC',
+            'SELECT * FROM contratti_luce WHERE cliente_azienda_id = $1 ORDER BY data_inizio DESC',
             [req.params.id]
         );
         
         const contrattiGas = await pool.query(
-            'SELECT * FROM contratti_gas WHERE cliente_azienda_id = $1 ORDER BY data_attivazione DESC',
+            'SELECT * FROM contratti_gas WHERE cliente_azienda_id = $1 ORDER BY data_inizio DESC',
             [req.params.id]
         );
         
@@ -502,7 +507,7 @@ router.post('/aziende', authorize('operatore', 'admin', 'super_admin'), validate
  * PUT /api/clienti/aziende/:id
  * Aggiorna cliente azienda
  */
-router.put('/aziende/:id', authorize('operatore', 'admin', 'super_admin'), validateUUID('id'), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/aziende/:id', authorize('operatore', 'admin', 'super_admin'), validateFlexibleId('id'), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const updates: string[] = [];
         const values: any[] = [];
@@ -563,7 +568,7 @@ router.put('/aziende/:id', authorize('operatore', 'admin', 'super_admin'), valid
  * DELETE /api/clienti/:tipo/:id
  * Elimina cliente (soft delete)
  */
-router.delete('/:tipo/:id', authorize('admin', 'super_admin'), validateUUID('id'), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:tipo/:id', authorize('admin', 'super_admin'), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { tipo, id } = req.params;
         
@@ -571,6 +576,14 @@ router.delete('/:tipo/:id', authorize('admin', 'super_admin'), validateUUID('id'
             return res.status(400).json({
                 success: false,
                 message: 'Tipo cliente non valido'
+            });
+        }
+        
+        // Validazione ID flessibile (UUID o ID generato da CSV)
+        if (!id || id.trim() === '') {
+            return res.status(400).json({
+                success: false,
+                message: 'ID cliente non valido'
             });
         }
         
@@ -674,18 +687,28 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
             const rowNum = i + 2; // +2 perché la riga 1 è l'header e iniziamo da 0
 
             try {
-                let tipo = (record.tipo || '').toLowerCase().trim();
+                // Usa tipo_record come campo principale, con fallback su tipo per compatibilità
+                let tipo = (record.tipo_record || record.tipo || '').toLowerCase().trim();
                 
                 // 🔧 FIX: se tipo è vuoto ma c'è ragione_sociale, è un'azienda
                 if (!tipo && record.ragione_sociale) {
-                    tipo = 'azienda';
+                    tipo = 'cliente_azienda';
                 }
                 
-                if (!tipo || (tipo !== 'privato' && tipo !== 'azienda')) {
-                    throw new Error('Campo "tipo" obbligatorio (privato o azienda)');
+                // 🔧 FIX: se tipo è vuoto ma ci sono nome/cognome, è un privato
+                if (!tipo && (record.nome || record.cognome)) {
+                    tipo = 'cliente_privato';
+                }
+                
+                // Normalizza i valori per compatibilità
+                if (tipo === 'privato') tipo = 'cliente_privato';
+                if (tipo === 'azienda') tipo = 'cliente_azienda';
+                
+                if (!tipo || (tipo !== 'cliente_privato' && tipo !== 'cliente_azienda')) {
+                    throw new Error('Campo "tipo_record" obbligatorio (cliente_privato o cliente_azienda)');
                 }
 
-                if (tipo === 'privato') {
+                if (tipo === 'cliente_privato') {
                     // Cliente privato - validazioni minime
                     // Almeno uno tra nome, cognome o email deve essere presente
                     if (!record.nome && !record.cognome && !record.email_principale && !record.codice_fiscale) {
@@ -847,10 +870,10 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
                                 INSERT INTO contratti_luce (
                                     id, cliente_privato_id, cliente_azienda_id, tipo_cliente,
                                     numero_contratto, pod, fornitore, commodity, procedure, pdp,
-                                    data_stipula, data_attivazione, data_scadenza,
+                                    data_stipula, data_inizio, data_scadenza,
                                     agente, nome_offerta, tipo_offerta, validita_offerta,
                                     utente_acquisizione, prezzo_energia, stato, note, created_by, created_at
-                                ) VALUES (?, ?, NULL, 'privato', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                                ) VALUES (?, ?, NULL, 'cliente_privato', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                             `, [
                                 contrattoId,
                                 clienteId,
@@ -905,10 +928,10 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
                                 INSERT INTO contratti_gas (
                                     id, cliente_privato_id, cliente_azienda_id, tipo_cliente,
                                     numero_contratto, pdr, fornitore, commodity, procedure, pdp,
-                                    data_stipula, data_attivazione, data_scadenza,
+                                    data_stipula, data_inizio, data_scadenza,
                                     agente, nome_offerta, tipo_offerta, validita_offerta,
                                     utente_acquisizione, prezzo_gas, stato, note, created_by, created_at
-                                ) VALUES (?, ?, NULL, 'privato', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                                ) VALUES (?, ?, NULL, 'cliente_privato', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                             `, [
                                 contrattoId,
                                 clienteId,
@@ -1101,10 +1124,10 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
                                 INSERT INTO contratti_luce (
                                     id, cliente_privato_id, cliente_azienda_id, tipo_cliente,
                                     numero_contratto, pod, fornitore, commodity, procedure, pdp,
-                                    data_stipula, data_attivazione, data_scadenza,
+                                    data_stipula, data_inizio, data_scadenza,
                                     agente, nome_offerta, tipo_offerta, validita_offerta,
                                     utente_acquisizione, prezzo_energia, stato, note, created_by, created_at
-                                ) VALUES (?, NULL, ?, 'azienda', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                                ) VALUES (?, NULL, ?, 'cliente_azienda', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                             `, [
                                 contrattoId,
                                 clienteId,
@@ -1159,10 +1182,10 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
                                 INSERT INTO contratti_gas (
                                     id, cliente_privato_id, cliente_azienda_id, tipo_cliente,
                                     numero_contratto, pdr, fornitore, commodity, procedure, pdp,
-                                    data_stipula, data_attivazione, data_scadenza,
+                                    data_stipula, data_inizio, data_scadenza,
                                     agente, nome_offerta, tipo_offerta, validita_offerta,
                                     utente_acquisizione, prezzo_gas, stato, note, created_by, created_at
-                                ) VALUES (?, NULL, ?, 'azienda', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                                ) VALUES (?, NULL, ?, 'cliente_azienda', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                             `, [
                                 contrattoId,
                                 clienteId,
@@ -1237,7 +1260,7 @@ router.get('/newsletter', async (req: Request, res: Response, next: NextFunction
  * POST /api/clienti/:tipo/:id/newsletter/:newsletterId
  * Iscrive un cliente a una newsletter
  */
-router.post('/:tipo/:id/newsletter/:newsletterId', validateUUID, async (req: Request, res: Response, next: NextFunction) => {
+router.post('/:tipo/:id/newsletter/:newsletterId', validateFlexibleId('id'), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { tipo, id, newsletterId } = req.params;
         
@@ -1282,7 +1305,7 @@ router.post('/:tipo/:id/newsletter/:newsletterId', validateUUID, async (req: Req
  * DELETE /api/clienti/:tipo/:id/newsletter/:newsletterId
  * Cancella l'iscrizione di un cliente da una newsletter
  */
-router.delete('/:tipo/:id/newsletter/:newsletterId', validateUUID, async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/:tipo/:id/newsletter/:newsletterId', validateFlexibleId('id'), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { tipo, id, newsletterId } = req.params;
         const clienteTipo = tipo === 'privati' ? 'privato' : 'azienda';
@@ -1819,7 +1842,7 @@ router.post('/woocommerce-import', upload.single('file'), async (req: Request, r
  * Esportazione completa di tutti i dati del cliente
  * Include: dati cliente, contratti, documenti, email, note, storico eventi
  */
-router.get('/:tipo/:id/export-complete', validateUUID('id'), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/:tipo/:id/export-complete', validateFlexibleId('id'), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { tipo, id } = req.params;
         
@@ -1873,110 +1896,177 @@ router.get('/:tipo/:id/export-complete', validateUUID('id'), async (req: Request
             clienteData = clienteResult.rows[0];
         }
 
-        // 2. CONTRATTI LUCE
-        const contrattiLuceResult = await pool.query(`
-            SELECT 
-                cl.*,
-                sp.data_modifica as ultima_modifica_prezzo,
-                sp.prezzo_energia as ultimo_prezzo_energia,
-                sp.prezzo_trasporto as ultimo_prezzo_trasporto
-            FROM contratti_luce cl
-            LEFT JOIN storico_prezzi sp ON cl.id = sp.contratto_id AND sp.tipo_contratto = 'luce'
-            WHERE cl.${tipo === 'privato' ? 'cliente_privato_id' : 'cliente_azienda_id'} = ?
-            ORDER BY cl.data_attivazione DESC
-        `, [id]);
+        // 2. CONTRATTI LUCE - con fallback per storico_prezzi
+        let contrattiLuceResult;
+        try {
+            contrattiLuceResult = await pool.query(`
+                SELECT 
+                    cl.*,
+                    sp.data_modifica as ultima_modifica_prezzo,
+                    sp.prezzo_energia as ultimo_prezzo_energia,
+                    sp.prezzo_trasporto as ultimo_prezzo_trasporto
+                FROM contratti_luce cl
+                LEFT JOIN storico_prezzi sp ON cl.id = sp.contratto_id AND sp.tipo_contratto = 'luce'
+                WHERE cl.${tipo === 'privato' ? 'cliente_privato_id' : 'cliente_azienda_id'} = ?
+                ORDER BY cl.data_inizio DESC
+            `, [id]);
+        } catch (error) {
+            // Fallback senza storico_prezzi se la tabella non esiste
+            console.warn('Tabella storico_prezzi non trovata, carico contratti senza storico prezzi');
+            contrattiLuceResult = await pool.query(`
+                SELECT cl.*
+                FROM contratti_luce cl
+                WHERE cl.${tipo === 'privato' ? 'cliente_privato_id' : 'cliente_azienda_id'} = ?
+                ORDER BY cl.data_inizio DESC
+            `, [id]);
+        }
 
-        // 3. CONTRATTI GAS
-        const contrattiGasResult = await pool.query(`
-            SELECT 
-                cg.*,
-                sp.data_modifica as ultima_modifica_prezzo,
-                sp.prezzo_energia as ultimo_prezzo_energia,
-                sp.prezzo_trasporto as ultimo_prezzo_trasporto
-            FROM contratti_gas cg
-            LEFT JOIN storico_prezzi sp ON cg.id = sp.contratto_id AND sp.tipo_contratto = 'gas'
-            WHERE cg.${tipo === 'privato' ? 'cliente_privato_id' : 'cliente_azienda_id'} = ?
-            ORDER BY cg.data_attivazione DESC
-        `, [id]);
+        // 3. CONTRATTI GAS - con fallback per storico_prezzi
+        let contrattiGasResult;
+        try {
+            contrattiGasResult = await pool.query(`
+                SELECT 
+                    cg.*,
+                    sp.data_modifica as ultima_modifica_prezzo,
+                    sp.prezzo_energia as ultimo_prezzo_energia,
+                    sp.prezzo_trasporto as ultimo_prezzo_trasporto
+                FROM contratti_gas cg
+                LEFT JOIN storico_prezzi sp ON cg.id = sp.contratto_id AND sp.tipo_contratto = 'gas'
+                WHERE cg.${tipo === 'privato' ? 'cliente_privato_id' : 'cliente_azienda_id'} = ?
+                ORDER BY cg.data_inizio DESC
+            `, [id]);
+        } catch (error) {
+            // Fallback senza storico_prezzi se la tabella non esiste
+            console.warn('Tabella storico_prezzi non trovata, carico contratti senza storico prezzi');
+            contrattiGasResult = await pool.query(`
+                SELECT cg.*
+                FROM contratti_gas cg
+                WHERE cg.${tipo === 'privato' ? 'cliente_privato_id' : 'cliente_azienda_id'} = ?
+                ORDER BY cg.data_inizio DESC
+            `, [id]);
+        }
 
-        // 4. DOCUMENTI
-        const documentiResult = await pool.query(`
-            SELECT 
-                d.*,
-                u.nome || ' ' || u.cognome as caricato_da_nome
-            FROM documenti d
-            LEFT JOIN users u ON d.caricato_da = u.id
-            WHERE d.cliente_id = ? AND d.cliente_tipo = ?
-            ORDER BY d.data_caricamento DESC
-        `, [id, tipo]);
+        // 4. DOCUMENTI - con fallback
+        let documentiResult;
+        try {
+            documentiResult = await pool.query(`
+                SELECT 
+                    d.*,
+                    u.nome || ' ' || u.cognome as caricato_da_nome
+                FROM documenti d
+                LEFT JOIN users u ON d.caricato_da = u.id
+                WHERE d.cliente_id = ? AND d.cliente_tipo = ?
+                ORDER BY d.data_caricamento DESC
+            `, [id, tipo]);
+        } catch (error) {
+            console.warn('Tabella documenti non trovata, utilizzo fallback con array vuoto');
+            documentiResult = { rows: [], rowCount: 0 };
+        }
 
-        // 5. EMAIL INVIATE
-        const emailResult = await pool.query(`
-            SELECT 
-                ei.*,
-                u.nome || ' ' || u.cognome as mittente_nome,
-                u.email as mittente_email
-            FROM email_inviate ei
-            LEFT JOIN users u ON ei.mittente_id = u.id
-            WHERE ei.cliente_id = ? AND ei.cliente_tipo = ?
-            ORDER BY ei.data_invio DESC
-        `, [id, tipo]);
+        // 5. EMAIL INVIATE - con fallback
+        let emailResult;
+        try {
+            emailResult = await pool.query(`
+                SELECT 
+                    ei.*,
+                    u.nome || ' ' || u.cognome as mittente_nome,
+                    u.email as mittente_email
+                FROM email_inviate ei
+                LEFT JOIN users u ON ei.mittente_id = u.id
+                WHERE ei.cliente_id = ? AND ei.cliente_tipo = ?
+                ORDER BY ei.data_invio DESC
+            `, [id, tipo]);
+        } catch (error) {
+            console.warn('Tabella email_inviate non trovata, utilizzo fallback con array vuoto');
+            emailResult = { rows: [], rowCount: 0 };
+        }
 
-        // 6. NOTE
-        const noteResult = await pool.query(`
-            SELECT 
-                n.*,
-                u.nome || ' ' || u.cognome as autore_nome
-            FROM note n
-            LEFT JOIN users u ON n.autore_id = u.id
-            WHERE n.cliente_id = ? AND n.cliente_tipo = ?
-            ORDER BY n.created_at DESC
-        `, [id, tipo]);
+        // 6. NOTE (con fallback per tabella mancante)
+        let noteResult;
+        try {
+            noteResult = await pool.query(`
+                SELECT 
+                    n.*,
+                    u.nome || ' ' || u.cognome as autore_nome
+                FROM note n
+                LEFT JOIN users u ON n.autore_id = u.id
+                WHERE n.cliente_id = ? AND n.cliente_tipo = ?
+                ORDER BY n.created_at DESC
+            `, [id, tipo]);
+        } catch (error) {
+            // Fallback se la tabella 'note' non esiste
+            console.warn('Tabella note non trovata, utilizzo fallback con array vuoto');
+            noteResult = { rows: [], rowCount: 0 };
+        }
 
-        // 7. STORICO EVENTI (AUDIT LOG)
-        const storicoResult = await pool.query(`
-            SELECT 
-                al.*,
-                u.nome || ' ' || u.cognome as utente_nome
-            FROM audit_log al
-            LEFT JOIN users u ON al.utente_id = u.id
-            WHERE al.cliente_id = ? AND al.cliente_tipo = ?
-            ORDER BY al.timestamp DESC
-        `, [id, tipo]);
+        // 7. STORICO EVENTI (AUDIT LOG) - con fallback
+        let storicoResult;
+        try {
+            storicoResult = await pool.query(`
+                SELECT 
+                    al.*,
+                    u.nome || ' ' || u.cognome as utente_nome
+                FROM audit_log al
+                LEFT JOIN users u ON al.utente_id = u.id
+                WHERE al.cliente_id = ? AND al.cliente_tipo = ?
+                ORDER BY al.timestamp DESC
+            `, [id, tipo]);
+        } catch (error) {
+            console.warn('Tabella audit_log non trovata, utilizzo fallback con array vuoto');
+            storicoResult = { rows: [], rowCount: 0 };
+        }
 
-        // 8. STORICO PROCEDURE CONTRATTI
-        const storicoProcedureResult = await pool.query(`
-            SELECT 
-                sp.*,
-                u.nome || ' ' || u.cognome as utente_nome
-            FROM storico_procedure sp
-            LEFT JOIN users u ON sp.utente_id = u.id
-            WHERE sp.contratto_id IN (
-                SELECT id FROM contratti_luce WHERE ${tipo === 'privato' ? 'cliente_privato_id' : 'cliente_azienda_id'} = ?
-                UNION
-                SELECT id FROM contratti_gas WHERE ${tipo === 'privato' ? 'cliente_privato_id' : 'cliente_azienda_id'} = ?
-            )
-            ORDER BY sp.data_procedura DESC
-        `, [id, id]);
+        // 8. STORICO PROCEDURE CONTRATTI - con fallback
+        let storicoProcedureResult;
+        try {
+            storicoProcedureResult = await pool.query(`
+                SELECT 
+                    sp.*,
+                    u.nome || ' ' || u.cognome as utente_nome
+                FROM storico_procedure sp
+                LEFT JOIN users u ON sp.utente_id = u.id
+                WHERE sp.contratto_id IN (
+                    SELECT id FROM contratti_luce WHERE ${tipo === 'privato' ? 'cliente_privato_id' : 'cliente_azienda_id'} = ?
+                    UNION
+                    SELECT id FROM contratti_gas WHERE ${tipo === 'privato' ? 'cliente_privato_id' : 'cliente_azienda_id'} = ?
+                )
+                ORDER BY sp.data_procedura DESC
+            `, [id, id]);
+        } catch (error) {
+            console.warn('Tabella storico_procedure non trovata, utilizzo fallback con array vuoto');
+            storicoProcedureResult = { rows: [], rowCount: 0 };
+        }
 
-        // 9. CONSENSI GDPR
-        const consensiResult = await pool.query(`
-            SELECT *
-            FROM consensi_gdpr
-            WHERE cliente_id = ? AND cliente_tipo = ?
-            ORDER BY data_consenso DESC
-        `, [id, tipo]);
+        // 9. CONSENSI GDPR - con fallback
+        let consensiResult;
+        try {
+            consensiResult = await pool.query(`
+                SELECT *
+                FROM consensi_gdpr
+                WHERE cliente_id = ? AND cliente_tipo = ?
+                ORDER BY data_consenso DESC
+            `, [id, tipo]);
+        } catch (error) {
+            console.warn('Tabella consensi_gdpr non trovata, utilizzo fallback con array vuoto');
+            consensiResult = { rows: [], rowCount: 0 };
+        }
 
-        // 10. TASKS ASSOCIATI
-        const tasksResult = await pool.query(`
-            SELECT 
-                t.*,
-                u.nome || ' ' || u.cognome as assegnato_a_nome
-            FROM tasks t
-            LEFT JOIN users u ON t.assegnato_a = u.id
-            WHERE t.cliente_id = ? AND t.cliente_tipo = ?
-            ORDER BY t.data_scadenza ASC
-        `, [id, tipo]);
+        // 10. TASKS ASSOCIATI - con fallback
+        let tasksResult;
+        try {
+            tasksResult = await pool.query(`
+                SELECT 
+                    t.*,
+                    u.nome || ' ' || u.cognome as assegnato_a_nome
+                FROM tasks t
+                LEFT JOIN users u ON t.assegnato_a = u.id
+                WHERE t.cliente_id = ? AND t.cliente_tipo = ?
+                ORDER BY t.data_scadenza ASC
+            `, [id, tipo]);
+        } catch (error) {
+            console.warn('Tabella tasks non trovata, utilizzo fallback con array vuoto');
+            tasksResult = { rows: [], rowCount: 0 };
+        }
 
         // Costruisci la risposta completa
         const exportData = {

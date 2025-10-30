@@ -23,7 +23,7 @@ router.get('/luce', async (req: Request, res: Response, next: NextFunction) => {
             SELECT cl.*, 
                    cp.nome as cliente_nome, cp.cognome as cliente_cognome, cp.email_principale as cliente_email,
                    ca.ragione_sociale as azienda_nome, ca.email_referente as azienda_email,
-                   cl.data_scadenza - CURRENT_DATE as giorni_a_scadenza
+                   CAST((julianday(cl.data_fine) - julianday('now')) AS INTEGER) as giorni_a_scadenza
             FROM contratti_luce cl
             LEFT JOIN clienti_privati cp ON cl.cliente_privato_id = cp.id
             LEFT JOIN clienti_aziende ca ON cl.cliente_azienda_id = ca.id
@@ -35,7 +35,7 @@ router.get('/luce', async (req: Request, res: Response, next: NextFunction) => {
             params.push(stato);
         }
         
-        query += ' ORDER BY cl.data_scadenza ASC LIMIT $' + (params.length + 1);
+        query += ' ORDER BY cl.data_fine ASC LIMIT $' + (params.length + 1);
         params.push(limit);
         
         const result = await pool.query(query, params);
@@ -110,7 +110,7 @@ router.get('/cliente/:tipo/:id', async (req: Request, res: Response, next: NextF
                 'luce' as tipo_contratto
             FROM contratti_luce cl
             WHERE cl.${clienteIdColumn} = $1
-            ORDER BY cl.data_scadenza DESC
+            ORDER BY cl.data_fine DESC
         `, [id]);
         
         // Contratti gas
@@ -120,14 +120,14 @@ router.get('/cliente/:tipo/:id', async (req: Request, res: Response, next: NextF
                 'gas' as tipo_contratto
             FROM contratti_gas cg
             WHERE cg.${clienteIdColumn} = $1
-            ORDER BY cg.data_scadenza DESC
+            ORDER BY cg.data_fine DESC
         `, [id]);
         
         const contrattiLuceArray = (contrattiLuce.rows || []).map((c: any) => ({ ...c, tipo_contratto: 'luce' }));
         const contrattiGasArray = (contrattiGas.rows || []).map((c: any) => ({ ...c, tipo_contratto: 'gas' }));
         
         const contratti = [...contrattiLuceArray, ...contrattiGasArray]
-            .sort((a: any, b: any) => new Date(b.data_scadenza).getTime() - new Date(a.data_scadenza).getTime());
+            .sort((a: any, b: any) => new Date(b.data_fine).getTime() - new Date(a.data_fine).getTime());
         
         res.json({
             success: true,
@@ -152,12 +152,12 @@ router.get('/scadenze', async (req: Request, res: Response, next: NextFunction) 
                 cp.email_principale as cliente_email,
                 ca.ragione_sociale as azienda_nome,
                 ca.email_referente as azienda_email,
-                CAST((julianday(cl.data_scadenza) - julianday('now')) AS INTEGER) as giorni_a_scadenza
+                CAST((julianday(cl.data_fine) - julianday('now')) AS INTEGER) as giorni_a_scadenza
             FROM contratti_luce cl
             LEFT JOIN clienti_privati cp ON cl.cliente_privato_id = cp.id
             LEFT JOIN clienti_aziende ca ON cl.cliente_azienda_id = ca.id
             WHERE cl.stato = 'attivo' 
-            AND julianday(cl.data_scadenza) - julianday('now') <= $1
+            AND julianday(cl.data_fine) - julianday('now') <= $1
         `, [giorni]);
         
         // Query diretta per contratti gas in scadenza
@@ -170,12 +170,12 @@ router.get('/scadenze', async (req: Request, res: Response, next: NextFunction) 
                 cp.email_principale as cliente_email,
                 ca.ragione_sociale as azienda_nome,
                 ca.email_referente as azienda_email,
-                CAST((julianday(cg.data_scadenza) - julianday('now')) AS INTEGER) as giorni_a_scadenza
+                CAST((julianday(cg.data_fine) - julianday('now')) AS INTEGER) as giorni_a_scadenza
             FROM contratti_gas cg
             LEFT JOIN clienti_privati cp ON cg.cliente_privato_id = cp.id
             LEFT JOIN clienti_aziende ca ON cg.cliente_azienda_id = ca.id
             WHERE cg.stato = 'attivo' 
-            AND julianday(cg.data_scadenza) - julianday('now') <= $1
+            AND julianday(cg.data_fine) - julianday('now') <= $1
         `, [giorni]);
         
         // Combina e ordina
@@ -202,14 +202,14 @@ router.post('/luce', authorize('operatore', 'admin', 'super_admin'), async (req:
             data_attivazione, data_scadenza, prezzo_energia, note, data_stipula, agente, nome_offerta,
             validita_offerta, commodity, procedure, pdp, tipo_offerta, stato
         } = req.body;
-        
+
         const { randomUUID } = require('crypto');
         const contrattoId = randomUUID();
-        
+
         await pool.query(`
             INSERT INTO contratti_luce (
                 id, cliente_privato_id, cliente_azienda_id, tipo_cliente, numero_contratto, pod, fornitore,
-                data_attivazione, data_scadenza, prezzo_energia, note, data_stipula, agente, nome_offerta,
+                data_inizio, data_fine, prezzo_energia, note, data_stipula, agente, nome_offerta,
                 validita_offerta, commodity, procedure, pdp, tipo_offerta, stato, created_by, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         `, [
@@ -249,7 +249,7 @@ router.post('/gas', authorize('operatore', 'admin', 'super_admin'), async (req: 
         await pool.query(`
             INSERT INTO contratti_gas (
                 id, cliente_privato_id, cliente_azienda_id, tipo_cliente, numero_contratto, pdr, fornitore,
-                data_attivazione, data_scadenza, prezzo_gas, note, data_stipula, agente, nome_offerta,
+                data_inizio, data_fine, prezzo_gas, note, data_stipula, agente, nome_offerta,
                 validita_offerta, commodity, procedure, pdp, tipo_offerta, stato, created_by, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         `, [
@@ -281,9 +281,9 @@ router.put('/luce/:id', authorize('operatore', 'admin', 'super_admin'), validate
         const values: any[] = [];
         
         const updatableFields = [
-            'fornitore', 'data_scadenza', 'potenza_impegnata', 'consumo_annuo_reale',
+            'fornitore', 'data_fine', 'potenza_impegnata', 'consumo_annuo_reale',
             'prezzo_energia', 'costo_fisso_mensile', 'stato', 'note', 'procedure', 
-            'commodity', 'pdp', 'data_stipula', 'data_attivazione', 'agente',
+            'commodity', 'pdp', 'data_stipula', 'data_inizio', 'agente',
             'nome_offerta', 'tipo_offerta', 'validita_offerta', 'utente_acquisizione'
         ];
         
@@ -423,9 +423,9 @@ router.put('/gas/:id', authorize('operatore', 'admin', 'super_admin'), validateU
         const values: any[] = [];
         
         const updatableFields = [
-            'fornitore', 'data_scadenza', 'consumo_annuo_gas', 'classe_contatore',
+            'fornitore', 'data_fine', 'consumo_annuo_gas', 'classe_contatore',
             'prezzo_gas', 'costo_fisso_mensile', 'stato', 'note', 'procedure', 
-            'commodity', 'pdp', 'data_stipula', 'data_attivazione', 'agente',
+            'commodity', 'pdp', 'data_stipula', 'data_inizio', 'agente',
             'nome_offerta', 'tipo_offerta', 'validita_offerta', 'utente_acquisizione'
         ];
         
@@ -579,7 +579,7 @@ router.post('/:tipo/:id/send-scadenza-email', authorize('operatore', 'admin', 's
                 cp.email_principale as cliente_email,
                 ca.ragione_sociale as azienda_nome,
                 ca.email_referente as azienda_email,
-                CAST((julianday(c.data_scadenza) - julianday('now')) AS INTEGER) as giorni_a_scadenza
+                CAST((julianday(c.data_fine) - julianday('now')) AS INTEGER) as giorni_a_scadenza
             FROM ${table} c
             LEFT JOIN clienti_privati cp ON c.cliente_privato_id = cp.id
             LEFT JOIN clienti_aziende ca ON c.cliente_azienda_id = ca.id

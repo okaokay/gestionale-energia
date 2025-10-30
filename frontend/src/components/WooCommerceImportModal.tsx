@@ -30,43 +30,60 @@ interface MappingPreset {
 
 type ImportPhase = 'upload' | 'mapping' | 'confirmation' | 'importing' | 'complete';
 
-const SYSTEM_FIELDS = {
-    privato: [
-        { key: 'nome', label: 'Nome', required: false, type: 'text' },
-        { key: 'cognome', label: 'Cognome', required: false, type: 'text' },
-        { key: 'email_principale', label: 'Email Principale', required: false, type: 'email' },
-        { key: 'telefono_mobile', label: 'Telefono Mobile', required: false, type: 'phone' },
-        { key: 'codice_fiscale', label: 'Codice Fiscale', required: false, type: 'text' },
-        { key: 'data_nascita', label: 'Data di Nascita', required: false, type: 'date' },
-        { key: 'citta_residenza', label: 'Città', required: false, type: 'text' },
-        { key: 'provincia_residenza', label: 'Provincia', required: false, type: 'text' },
-        { key: 'cap_residenza', label: 'CAP', required: false, type: 'text' },
-        { key: 'via_residenza', label: 'Via', required: false, type: 'text' },
-        { key: 'civico_residenza', label: 'Civico', required: false, type: 'text' },
-        { key: 'telefono_fisso', label: 'Telefono Fisso', required: false, type: 'phone' },
-        { key: 'email_secondaria', label: 'Email Secondaria', required: false, type: 'email' },
-        { key: 'pec', label: 'PEC', required: false, type: 'email' },
-        { key: 'note', label: 'Note', required: false, type: 'text' }
-    ],
-    azienda: [
-        { key: 'ragione_sociale', label: 'Ragione Sociale', required: false, type: 'text' },
-        { key: 'partita_iva', label: 'Partita IVA', required: false, type: 'text' },
-        { key: 'codice_fiscale', label: 'Codice Fiscale', required: false, type: 'text' },
-        { key: 'email_referente', label: 'Email Referente', required: false, type: 'email' },
-        { key: 'telefono_referente', label: 'Telefono Referente', required: false, type: 'phone' },
-        { key: 'nome_referente', label: 'Nome Referente', required: false, type: 'text' },
-        { key: 'cognome_referente', label: 'Cognome Referente', required: false, type: 'text' },
-        { key: 'citta_sede_legale', label: 'Città Sede', required: false, type: 'text' },
-        { key: 'provincia_sede_legale', label: 'Provincia Sede', required: false, type: 'text' },
-        { key: 'cap_sede_legale', label: 'CAP Sede', required: false, type: 'text' },
-        { key: 'via_sede_legale', label: 'Via Sede', required: false, type: 'text' },
-        { key: 'civico_sede_legale', label: 'Civico Sede', required: false, type: 'text' },
-        { key: 'codice_ateco', label: 'Codice ATECO', required: false, type: 'text' },
-        { key: 'pec_aziendale', label: 'PEC Aziendale', required: false, type: 'email' },
-        { key: 'codice_sdi', label: 'Codice SDI', required: false, type: 'text' },
-        { key: 'note', label: 'Note', required: false, type: 'text' }
-    ]
-};
+const SYSTEM_FIELDS = [
+    // Clienti Privati
+    { key: 'nome', label: 'Nome', required: false, type: 'text', category: 'Clienti Privati' },
+    { key: 'cognome', label: 'Cognome', required: false, type: 'text', category: 'Clienti Privati' },
+    { key: 'codice_fiscale', label: 'Codice Fiscale', required: false, type: 'text', category: 'Clienti Privati' },
+    { key: 'email_principale', label: 'Email Principale', required: false, type: 'email', category: 'Clienti Privati' },
+    { key: 'telefono_principale', label: 'Telefono Principale', required: false, type: 'phone', category: 'Clienti Privati' },
+    { key: 'data_nascita', label: 'Data di Nascita', required: false, type: 'date', category: 'Clienti Privati' },
+    { key: 'luogo_nascita', label: 'Luogo di Nascita', required: false, type: 'text', category: 'Clienti Privati' },
+    { key: 'indirizzo_residenza', label: 'Indirizzo Residenza', required: false, type: 'text', category: 'Clienti Privati' },
+    { key: 'cap_residenza', label: 'CAP Residenza', required: false, type: 'text', category: 'Clienti Privati' },
+    { key: 'citta_residenza', label: 'Città Residenza', required: false, type: 'text', category: 'Clienti Privati' },
+    { key: 'provincia_residenza', label: 'Provincia Residenza', required: false, type: 'text', category: 'Clienti Privati' },
+    { key: 'indirizzo_domicilio', label: 'Indirizzo Domicilio', required: false, type: 'text', category: 'Clienti Privati' },
+    { key: 'cap_domicilio', label: 'CAP Domicilio', required: false, type: 'text', category: 'Clienti Privati' },
+    { key: 'citta_domicilio', label: 'Città Domicilio', required: false, type: 'text', category: 'Clienti Privati' },
+    { key: 'provincia_domicilio', label: 'Provincia Domicilio', required: false, type: 'text', category: 'Clienti Privati' },
+
+    // Clienti Aziende
+    { key: 'ragione_sociale', label: 'Ragione Sociale', required: false, type: 'text', category: 'Clienti Aziende' },
+    { key: 'partita_iva', label: 'Partita IVA', required: false, type: 'text', category: 'Clienti Aziende' },
+    { key: 'codice_destinatario', label: 'Codice Destinatario', required: false, type: 'text', category: 'Clienti Aziende' },
+    { key: 'pec_aziendale', label: 'PEC Aziendale', required: false, type: 'email', category: 'Clienti Aziende' },
+    { key: 'telefono_aziendale', label: 'Telefono Aziendale', required: false, type: 'phone', category: 'Clienti Aziende' },
+    { key: 'indirizzo_sede_legale', label: 'Indirizzo Sede Legale', required: false, type: 'text', category: 'Clienti Aziende' },
+    { key: 'cap_sede_legale', label: 'CAP Sede Legale', required: false, type: 'text', category: 'Clienti Aziende' },
+    { key: 'citta_sede_legale', label: 'Città Sede Legale', required: false, type: 'text', category: 'Clienti Aziende' },
+    { key: 'provincia_sede_legale', label: 'Provincia Sede Legale', required: false, type: 'text', category: 'Clienti Aziende' },
+
+    // Contratti Luce
+    { key: 'pod', label: 'POD (Punto di Prelievo)', required: false, type: 'text', category: 'Contratti Luce' },
+    { key: 'tipo_contratto', label: 'Tipo Contratto', required: false, type: 'text', category: 'Contratti Luce' },
+    { key: 'fornitore_attuale', label: 'Fornitore Attuale', required: false, type: 'text', category: 'Contratti Luce' },
+    { key: 'data_inizio_contratto', label: 'Data Inizio Contratto', required: false, type: 'date', category: 'Contratti Luce' },
+    { key: 'data_fine_contratto', label: 'Data Fine Contratto', required: false, type: 'date', category: 'Contratti Luce' },
+    { key: 'potenza_impegnata', label: 'Potenza Impegnata (kW)', required: false, type: 'number', category: 'Contratti Luce' },
+    { key: 'consumo_annuo_stimato', label: 'Consumo Annuo Stimato (kWh)', required: false, type: 'number', category: 'Contratti Luce' },
+    { key: 'tipo_tariffa', label: 'Tipo Tariffa', required: false, type: 'text', category: 'Contratti Luce' },
+
+    // Contratti Gas
+    { key: 'pdr', label: 'PDR (Punto di Riconsegna)', required: false, type: 'text', category: 'Contratti Gas' },
+    { key: 'tipo_contratto_gas', label: 'Tipo Contratto Gas', required: false, type: 'text', category: 'Contratti Gas' },
+    { key: 'fornitore_attuale_gas', label: 'Fornitore Attuale Gas', required: false, type: 'text', category: 'Contratti Gas' },
+    { key: 'data_inizio_contratto_gas', label: 'Data Inizio Contratto Gas', required: false, type: 'date', category: 'Contratti Gas' },
+    { key: 'data_fine_contratto_gas', label: 'Data Fine Contratto Gas', required: false, type: 'date', category: 'Contratti Gas' },
+    { key: 'consumo_annuo_stimato_gas', label: 'Consumo Annuo Stimato Gas (Smc)', required: false, type: 'number', category: 'Contratti Gas' },
+    { key: 'tipo_tariffa_gas', label: 'Tipo Tariffa Gas', required: false, type: 'text', category: 'Contratti Gas' },
+
+    // Agente
+    { key: 'assigned_agent_email', label: 'Email Agente Assegnato', required: false, type: 'email', category: 'Agente' },
+
+    // Campi Generali
+    { key: 'note_aggiuntive', label: 'Note Aggiuntive', required: false, type: 'text', category: 'Generale' }
+];
 
 export default function WooCommerceImportModal({ isOpen, onClose, onImportComplete }: WooCommerceImportModalProps) {
     const [phase, setPhase] = useState<ImportPhase>('upload');
@@ -190,7 +207,7 @@ export default function WooCommerceImportModal({ isOpen, onClose, onImportComple
     };
 
     const autoMapFields = () => {
-        const systemFields = SYSTEM_FIELDS[clientType];
+        const systemFields = SYSTEM_FIELDS;
         const newMappings: FieldMapping[] = [];
 
         csvColumns.forEach(csvCol => {
@@ -488,7 +505,7 @@ export default function WooCommerceImportModal({ isOpen, onClose, onImportComple
                                 <div className="divide-y divide-gray-200">
                                     {csvColumns.map((column, index) => {
                                         const mapping = mappings.find(m => m.csvColumn === column.name);
-                                        const systemFields = SYSTEM_FIELDS[clientType];
+                                        const systemFields = SYSTEM_FIELDS;
                                         
                                         return (
                                             <div key={index} className="px-6 py-4 grid grid-cols-4 gap-4 items-center">
@@ -514,10 +531,20 @@ export default function WooCommerceImportModal({ isOpen, onClose, onImportComple
                                                         className="w-full p-2 border border-gray-300 rounded-lg text-sm"
                                                     >
                                                         <option value="">Non mappare</option>
-                                                        {systemFields.map(field => (
-                                                            <option key={field.key} value={field.key}>
-                                                                {field.label} {field.required && '*'}
-                                                            </option>
+                                                        {Object.entries(
+                                                            systemFields.reduce((acc, field) => {
+                                                                if (!acc[field.category]) acc[field.category] = [];
+                                                                acc[field.category].push(field);
+                                                                return acc;
+                                                            }, {} as Record<string, typeof systemFields>)
+                                                        ).map(([category, fields]) => (
+                                                            <optgroup key={category} label={category}>
+                                                                {fields.map(field => (
+                                                                    <option key={field.key} value={field.key}>
+                                                                        {field.label} {field.required && '*'}
+                                                                    </option>
+                                                                ))}
+                                                            </optgroup>
                                                         ))}
                                                     </select>
                                                 </div>
@@ -626,7 +653,7 @@ export default function WooCommerceImportModal({ isOpen, onClose, onImportComple
                                                 <span className="font-medium text-gray-700">{mapping.csvColumn}</span>
                                                 <span className="text-gray-500">→</span>
                                                 <span className="text-blue-600">
-                                                    {SYSTEM_FIELDS[clientType].find(f => f.key === mapping.systemField)?.label}
+                                                    {SYSTEM_FIELDS.find(f => f.key === mapping.systemField)?.label}
                                                 </span>
                                             </div>
                                         ))}

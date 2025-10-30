@@ -34,7 +34,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
         
         // Verifica che l'utente esista ancora nel database e recupera tutti i dati
         const userCheck = await pool.query(
-            'SELECT id, email, role, nome, cognome, agency_name, parent_id, is_active FROM users WHERE id = ?',
+            'SELECT id, email, ruolo, nome, cognome, attivo FROM users WHERE id = ?',
             [decoded.userId]
         );
         
@@ -46,7 +46,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
         }
         
         const user = userCheck.rows[0] as any;
-        if (!user.is_active) {
+        if (!user.attivo) {
             return res.status(401).json({
                 success: false,
                 message: 'Utente disattivato'
@@ -64,8 +64,8 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
             userId: decoded.userId,
             id: user.id,
             email: user.email,
-            ruolo: user.role,  // Per retrocompatibilità frontend
-            role: user.role,   // Standard per backend
+            ruolo: user.ruolo,  // Per retrocompatibilità frontend
+            role: user.ruolo,   // Standard per backend
             nome: user.nome,
             cognome: user.cognome,
             agency_name: user.agency_name,

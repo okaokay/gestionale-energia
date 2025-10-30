@@ -106,6 +106,17 @@ export const validateUUID = (paramName: string = 'id') => [
 ];
 
 /**
+ * Validatore flessibile per ID (accetta UUID, numerici o stringhe non vuote)
+ */
+export const validateFlexibleId = (paramName: string = 'id') => [
+    param(paramName)
+        .trim()
+        .notEmpty().withMessage(`${paramName} obbligatorio`)
+        .matches(/^[A-Za-z0-9\-]+$/).withMessage(`${paramName} contiene caratteri non validi`),
+    handleValidationErrors
+];
+
+/**
  * Validatore paginazione
  */
 export const validatePagination = [
@@ -123,6 +134,7 @@ export default {
     validateOfferta,
     validateEmailCampaign,
     validateUUID,
+    validateFlexibleId,
     validatePagination,
 };
 

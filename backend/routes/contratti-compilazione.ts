@@ -250,7 +250,7 @@ router.post('/create-manual', async (req: Request, res: Response) => {
                     await pool.query(`
                         INSERT INTO contratti_luce (
                             id, cliente_privato_id, cliente_azienda_id, tipo_cliente, numero_contratto, pod, fornitore,
-                            prezzo_energia, data_attivazione, data_scadenza, stato
+                            prezzo_energia, data_inizio, data_fine, stato
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'attivo')
                     `, [
                         podId,
@@ -276,7 +276,7 @@ router.post('/create-manual', async (req: Request, res: Response) => {
                     await pool.query(`
                         INSERT INTO contratti_gas (
                             id, cliente_privato_id, cliente_azienda_id, tipo_cliente, numero_contratto, pdr, fornitore,
-                            prezzo_gas, data_attivazione, data_scadenza, stato
+                            prezzo_gas, data_inizio, data_fine, stato
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'attivo')
                     `, [
                         pdrId,

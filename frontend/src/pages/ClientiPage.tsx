@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 import EmailComposeModal from '../components/EmailComposeModal';
 import ImportClientiModal from '../components/ImportClientiModal';
 import WooCommerceImportModal from '../components/WooCommerceImportModal';
+import UnifiedImportModal from '../components/UnifiedImportModal';
 import CreateAgentModal from '../components/CreateAgentModal';
 import StatoContrattoModal from '../components/StatoContrattoModal';
 import AssegnaAgenteAvanzatoModal from '../components/AssegnaAgenteAvanzatoModal';
@@ -30,7 +31,7 @@ import {
     Grid3x3,
     List,
     LayoutGrid,
-    Table2,
+    Table,
     ChevronDown,
     X,
     Eye,
@@ -97,8 +98,9 @@ export default function ClientiPage() {
     // Modale Email
     const [showEmailModal, setShowEmailModal] = useState(false);
     const [selectedClientForEmail, setSelectedClientForEmail] = useState<any>(null);
-    const [showImportModal, setShowImportModal] = useState(false);
+    const [showCSVImportModal, setShowCSVImportModal] = useState(false);
     const [showWooCommerceImportModal, setShowWooCommerceImportModal] = useState(false);
+    const [showUnifiedImportModal, setShowUnifiedImportModal] = useState(false);
     const [showAddDropdown, setShowAddDropdown] = useState(false);
     
     // Modale Cambio Stato Contratto
@@ -140,9 +142,22 @@ export default function ClientiPage() {
         loadAgenti();
     }, []);
 
+    // 🔄 Caricamento iniziale quando si arriva alla pagina clienti
     useEffect(() => {
-        console.log('🔄 Filters changed');
-        loadClienti();
+        if (location.pathname === '/clienti') {
+            console.log('🔄 Caricamento iniziale pagina clienti');
+            loadClienti();
+        }
+    }, [location.pathname]); // Carica solo quando si cambia pathname
+    
+    // 🔄 Ricarica quando i filtri cambiano (ma non al primo caricamento)
+    useEffect(() => {
+        // Evita il caricamento al primo render se i filtri sono vuoti
+        const hasActiveFilters = Object.values(filters).some(value => value !== '');
+        if (hasActiveFilters) {
+            console.log('🔄 Filters changed');
+            loadClienti();
+        }
     }, [filters]);
     
     // 🔄 Ricarica quando il refreshKey cambia (triggato da altre pagine)
@@ -152,30 +167,6 @@ export default function ClientiPage() {
             loadClienti();
         }
     }, [clientiRefreshKey]);
-    
-    // 🔄 Ricarica automaticamente quando torni alla pagina clienti (navigazione interna)
-    useEffect(() => {
-        if (location.pathname === '/clienti') {
-            console.log('🔄 Navigato a /clienti dalla location key:', location.key);
-            loadClienti();
-        }
-    }, [location.key]); // Usa location.key invece di pathname per reagire a OGNI navigazione
-    
-    // 🔄 Ricarica automaticamente quando la pagina diventa visibile (cambio tab browser)
-    useEffect(() => {
-        const handleVisibilityChange = () => {
-            if (document.visibilityState === 'visible' && location.pathname === '/clienti') {
-                console.log('🔄 Pagina clienti visibile - ricarico dati');
-                loadClienti();
-            }
-        };
-        
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-        };
-    }, [location.pathname]); // Ri-registra quando cambia la route
 
     useEffect(() => {
         calculateStats();
@@ -344,10 +335,11 @@ export default function ClientiPage() {
 
     const loadClienti = async () => {
         try {
-            console.log('🔄 loadClienti chiamato - timestamp:', new Date().toISOString());
-            
-            // 🔄 FORZA re-render azzerando lo stato
+            setLoading(true);
+            // Reset dei dati durante il caricamento per evitare visualizzazioni inconsistenti
             setClienti([]);
+            setContrattiStati({});
+            console.log('🔄 loadClienti chiamato - timestamp:', new Date().toISOString());
             
             const response = await clientiAPI.getAll({ 
                 search: filters.search, 
@@ -436,6 +428,12 @@ export default function ClientiPage() {
     };
 
     const toggleSelectClient = (id: string) => {
+        // Non selezionare clienti con ID non validi
+        if (!id || id.toString().trim() === '') {
+            toast.error('Impossibile selezionare cliente senza ID valido');
+            return;
+        }
+        
         const newSelected = new Set(selectedClients);
         if (newSelected.has(id)) {
             newSelected.delete(id);
@@ -446,10 +444,12 @@ export default function ClientiPage() {
     };
 
     const selectAllClients = () => {
-        if (selectedClients.size === clienti.length) {
+        const validClientIds = clienti.filter(c => c.id && c.id.toString().trim() !== '').map(c => c.id);
+        
+        if (selectedClients.size === validClientIds.length) {
             setSelectedClients(new Set());
         } else {
-            setSelectedClients(new Set(clienti.map(c => c.id)));
+            setSelectedClients(new Set(validClientIds));
         }
     };
 
@@ -487,27 +487,238 @@ export default function ClientiPage() {
                 return;
             }
 
-            // Crea un JSON con tutti i dati completi
-            const exportData = {
-                metadata: {
-                    export_date: new Date().toISOString(),
-                    total_clients: validExports.length,
-                    export_type: 'complete_client_data'
-                },
-                clients: validExports
-            };
+            // Crea un CSV completo con colonne estese
+            const csvEscape = (val: any) => '"' + String(val ?? '').replace(/"/g, '""') + '"';
 
-            const jsonContent = JSON.stringify(exportData, null, 2);
-            const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+            const header = [
+                'id','tipo',
+                'nome','cognome','ragione_sociale',
+                'codice_fiscale','partita_iva',
+                'codice_ateco','descrizione_ateco','pec_aziendale',
+                'data_nascita',
+                'email_principale','email_secondaria','email_referente',
+                'telefono_mobile','telefono_principale','telefono_fisso','telefono_referente',
+                'via_residenza','civico_residenza','cap_residenza','citta_residenza','provincia_residenza',
+                'via_sede_legale','civico_sede_legale','cap_sede_legale','citta_sede_legale','provincia_sede_legale',
+                'via_sede_operativa','civico_sede_operativa','cap_sede_operativa','citta_sede_operativa','provincia_sede_operativa',
+                'nome_referente','cognome_referente','ruolo_referente',
+                'dimensione_azienda','settore_merceologico','fatturato_annuo','iban_aziendale','codice_sdi',
+                'note','consenso_privacy','consenso_marketing','stato','created_at',
+                'contratti_luce','contratti_gas','documenti','email_inviate','note_count',
+                'eventi_storico','procedure_contratti','consensi_gdpr','tasks',
+                'metadata_data_esportazione','metadata_versione_export'
+            ];
+
+            const rows: string[] = [header.join(',')];
+            for (const result of validExports) {
+                const p = result?.data ?? result; // support both {data: {...}} or direct
+                const d = p?.cliente?.dati || {};
+                const contratti_luce = (p?.contratti?.luce || []).length;
+                const contratti_gas = (p?.contratti?.gas || []).length;
+                const documenti = (p?.documenti || []).length;
+                const email_inviate = (p?.comunicazioni?.email || []).length;
+                const note_count = (p?.note || []).length;
+                const eventi_storico = (p?.storico?.eventi || []).length;
+                const procedure_contratti = (p?.storico?.procedure_contratti || []).length;
+                const consensi_gdpr = (p?.consensi_gdpr || []).length;
+                const tasks = (p?.tasks || []).length;
+                const metadata_data_esportazione = p?.metadata?.data_esportazione || '';
+                const metadata_versione_export = p?.metadata?.versione_export || '';
+
+                const line = [
+                    csvEscape(d.id),
+                    csvEscape(p?.cliente?.tipo || ''),
+                    csvEscape(d.nome),
+                    csvEscape(d.cognome),
+                    csvEscape(d.ragione_sociale),
+                    csvEscape(d.codice_fiscale),
+                    csvEscape(d.partita_iva),
+                    csvEscape(d.codice_ateco),
+                    csvEscape(d.descrizione_ateco),
+                    csvEscape(d.pec_aziendale),
+                    csvEscape(d.data_nascita),
+                    csvEscape(d.email_principale),
+                    csvEscape(d.email_secondaria),
+                    csvEscape(d.email_referente),
+                    csvEscape(d.telefono_mobile),
+                    csvEscape(d.telefono_principale),
+                    csvEscape(d.telefono_fisso),
+                    csvEscape(d.telefono_referente),
+                    csvEscape(d.via_residenza),
+                    csvEscape(d.civico_residenza),
+                    csvEscape(d.cap_residenza),
+                    csvEscape(d.citta_residenza),
+                    csvEscape(d.provincia_residenza),
+                    csvEscape(d.via_sede_legale),
+                    csvEscape(d.civico_sede_legale),
+                    csvEscape(d.cap_sede_legale),
+                    csvEscape(d.citta_sede_legale),
+                    csvEscape(d.provincia_sede_legale),
+                    csvEscape(d.via_sede_operativa),
+                    csvEscape(d.civico_sede_operativa),
+                    csvEscape(d.cap_sede_operativa),
+                    csvEscape(d.citta_sede_operativa),
+                    csvEscape(d.provincia_sede_operativa),
+                    csvEscape(d.nome_referente),
+                    csvEscape(d.cognome_referente),
+                    csvEscape(d.ruolo_referente),
+                    csvEscape(d.dimensione_azienda),
+                    csvEscape(d.settore_merceologico),
+                    csvEscape(d.fatturato_annuo),
+                    csvEscape(d.iban_aziendale),
+                    csvEscape(d.codice_sdi),
+                    csvEscape(d.note),
+                    csvEscape(d.consenso_privacy),
+                    csvEscape(d.consenso_marketing),
+                    csvEscape(d.stato),
+                    csvEscape(d.created_at),
+                    contratti_luce,
+                    contratti_gas,
+                    documenti,
+                    email_inviate,
+                    note_count,
+                    eventi_storico,
+                    procedure_contratti,
+                    consensi_gdpr,
+                    tasks,
+                    csvEscape(metadata_data_esportazione),
+                    csvEscape(metadata_versione_export)
+                ].join(',');
+                rows.push(line);
+            }
+
+            // Aggiungo hint del separatore per Excel e BOM UTF-8
+            const sepHint = 'sep=,'; // forza Excel a usare la virgola come separatore
+            const csvContent = [sepHint, ...rows].join('\r\n');
+            const utf8bom = '\uFEFF';
+            const blob = new Blob([utf8bom, csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `export_completo_clienti_${new Date().toISOString().split('T')[0]}.json`;
+            link.download = `export_completo_clienti_${new Date().toISOString().split('T')[0]}.csv`;
             link.click();
             
             toast.success(`✅ Export completo di ${validExports.length} clienti completato!`, { id: 'export-loading' });
         } catch (error) {
             console.error('Errore durante l\'export:', error);
             toast.error('❌ Errore durante l\'export dei clienti', { id: 'export-loading' });
+        }
+    };
+
+    // Export CSV Universale compatibile con Import Unificato (cliente + contratti)
+    const handleExportCSVUniversale = async () => {
+        const selected = clienti.filter(c => selectedClients.has(c.id));
+        const dataToExport = selected.length > 0 ? selected : clienti;
+        
+        if (dataToExport.length === 0) {
+            toast.error('Nessun cliente da esportare');
+            return;
+        }
+
+        try {
+            toast.loading('🔄 Preparazione export universale (import) in corso...', { id: 'export-universale' });
+
+            const exportPromises = dataToExport.map(async (cliente) => {
+                try {
+                    const response = await clientiAPI.exportCompleto(
+                        cliente.tipo === 'privato' ? 'privato' : 'azienda', 
+                        cliente.id
+                    );
+                    return response.data;
+                } catch (error) {
+                    console.error(`Errore export cliente ${cliente.id}:`, error);
+                    return null;
+                }
+            });
+
+            const exportResults = await Promise.all(exportPromises);
+            const validExports = exportResults.filter(result => result !== null);
+
+            if (validExports.length === 0) {
+                toast.error('❌ Errore durante l\'export (universale)', { id: 'export-universale' });
+                return;
+            }
+
+            const esc = (val: any) => '"' + String(val ?? '').replace(/"/g, '""') + '"';
+            const lines: string[] = ['sep=,'];
+            const header = [
+                'tipo_record','modalita_import',
+                // cliente privato
+                'nome','cognome','codice_fiscale','data_nascita','email_principale','telefono_mobile','via_residenza','civico_residenza','cap_residenza','citta_residenza','provincia_residenza',
+                // cliente azienda
+                'ragione_sociale','partita_iva','codice_ateco','pec_aziendale',
+                // contratto
+                'numero_contratto','pod','pdr','fornitore','data_attivazione','data_scadenza','prezzo_energia','prezzo_gas','stato_contratto'
+            ];
+            lines.push(header.join(','));
+
+            for (const result of validExports) {
+                const p = result?.data ?? result;
+                const d = p?.cliente?.dati || {};
+                const tipoCliente = p?.cliente?.tipo === 'privato' ? 'privato' : 'azienda';
+
+                // Record cliente
+                if (tipoCliente === 'privato') {
+                    lines.push([
+                        'cliente_privato','update',
+                        esc(d.nome),esc(d.cognome),esc(d.codice_fiscale),esc(d.data_nascita),esc(d.email_principale),esc(d.telefono_mobile),
+                        esc(d.via_residenza),esc(d.civico_residenza),esc(d.cap_residenza),esc(d.citta_residenza),esc(d.provincia_residenza),
+                        '', '', esc(d.codice_ateco), esc(d.pec_aziendale),
+                        '', '', '', '', '', '', '', '', ''
+                    ].join(','));
+                } else {
+                    lines.push([
+                        'cliente_azienda','update',
+                        '', '', '', '', esc(d.email_principale), esc(d.telefono_mobile), '', '', '', '', '',
+                        esc(d.ragione_sociale), esc(d.partita_iva), esc(d.codice_ateco), esc(d.pec_aziendale),
+                        '', '', '', '', '', '', '', '', ''
+                    ].join(','));
+                }
+
+                // Contratti luce
+                const contrattiLuce = Array.isArray(p?.contratti?.luce) ? p.contratti.luce : [];
+                for (const c of contrattiLuce) {
+                    lines.push([
+                        'contratto_luce','update',
+                        tipoCliente === 'privato' ? esc(d.nome) : '',
+                        tipoCliente === 'privato' ? esc(d.cognome) : '',
+                        tipoCliente === 'privato' ? esc(d.codice_fiscale) : '',
+                        '', esc(d.email_principale), esc(d.telefono_mobile), '', '', '', '', '',
+                        tipoCliente === 'azienda' ? esc(d.ragione_sociale) : '',
+                        tipoCliente === 'azienda' ? esc(d.partita_iva) : '',
+                        '', '',
+                        esc(c.numero_contratto), esc(c.pod), '', esc(c.fornitore), esc(c.data_attivazione), esc(c.data_scadenza), esc(c.prezzo_energia), '', esc(c.stato || c.stato_contratto)
+                    ].join(','));
+                }
+
+                // Contratti gas
+                const contrattiGas = Array.isArray(p?.contratti?.gas) ? p.contratti.gas : [];
+                for (const c of contrattiGas) {
+                    lines.push([
+                        'contratto_gas','update',
+                        tipoCliente === 'privato' ? esc(d.nome) : '',
+                        tipoCliente === 'privato' ? esc(d.cognome) : '',
+                        tipoCliente === 'privato' ? esc(d.codice_fiscale) : '',
+                        '', esc(d.email_principale), esc(d.telefono_mobile), '', '', '', '', '',
+                        tipoCliente === 'azienda' ? esc(d.ragione_sociale) : '',
+                        tipoCliente === 'azienda' ? esc(d.partita_iva) : '',
+                        '', '',
+                        esc(c.numero_contratto), '', esc(c.pdr), esc(c.fornitore), esc(c.data_attivazione), esc(c.data_scadenza), '', esc(c.prezzo_gas), esc(c.stato || c.stato_contratto)
+                    ].join(','));
+                }
+            }
+
+            const utf8bom = '\uFEFF';
+            const csvContent = utf8bom + lines.join('\r\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `export_universale_clienti_contratti_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+
+            toast.success(`✅ Export universale di ${validExports.length} clienti completato!`, { id: 'export-universale' });
+        } catch (error) {
+            console.error('Errore durante l\'export universale:', error);
+            toast.error('❌ Errore durante l\'export universale', { id: 'export-universale' });
         }
     };
 
@@ -529,7 +740,7 @@ export default function ClientiPage() {
         }
 
         const confirmed = window.confirm(
-            `⚠️ ATTENZIONE!\n\nStai per eliminare ${selected.length} clienti selezionati.\n\nQuesta operazione NON può essere annullata.\n\nVuoi continuare?`
+            `⚠️ ATTENZIONE!\n\nStai per eliminare ${selected.length} clienti selezionati.\n\nQuesta operazione eliminerà anche tutti i contratti associati e NON può essere annullata.\n\nVuoi continuare?`
         );
 
         if (!confirmed) return;
@@ -537,29 +748,61 @@ export default function ClientiPage() {
         try {
             toast.loading(`🗑️ Eliminazione di ${selected.length} clienti in corso...`, { id: 'bulk-delete-loading' });
 
+            // Filtra solo i clienti con ID validi
+            const validClients = selected.filter(c => c.id && c.id.toString().trim() !== '');
+            
+            if (validClients.length === 0) {
+                toast.error('Nessun cliente valido da eliminare (ID mancanti)', { id: 'bulk-delete-loading' });
+                return;
+            }
+
             // Raggruppa i clienti per tipo per ottimizzare le chiamate API
-            const privati = selected.filter(c => c.tipo === 'privato');
-            const aziende = selected.filter(c => c.tipo === 'azienda');
+            const privati = validClients.filter(c => c.tipo === 'privato');
+            const aziende = validClients.filter(c => c.tipo === 'azienda');
 
             const deletePromises = [];
+            const errors = [];
 
             // Elimina tutti i clienti privati
             for (const cliente of privati) {
-                deletePromises.push(clientiAPI.delete('privati', cliente.id));
+                if (cliente.id && cliente.id.toString().trim() !== '') {
+                    deletePromises.push(
+                        clientiAPI.delete('privati', cliente.id).catch(error => {
+                            errors.push({ cliente: `${cliente.nome || ''} ${cliente.cognome || ''}`.trim() || 'Cliente senza nome', error });
+                            return null;
+                        })
+                    );
+                }
             }
 
             // Elimina tutte le aziende
             for (const cliente of aziende) {
-                deletePromises.push(clientiAPI.delete('aziende', cliente.id));
+                if (cliente.id && cliente.id.toString().trim() !== '') {
+                    deletePromises.push(
+                        clientiAPI.delete('aziende', cliente.id).catch(error => {
+                            errors.push({ cliente: cliente.ragione_sociale || 'Azienda senza nome', error });
+                            return null;
+                        })
+                    );
+                }
             }
 
-            await Promise.all(deletePromises);
+            const results = await Promise.all(deletePromises);
+            const successCount = results.filter(r => r !== null).length;
 
             // Aggiorna la lista e resetta la selezione
             await loadClienti();
             setSelectedClients(new Set());
 
-            toast.success(`✅ ${selected.length} clienti eliminati con successo!`, { id: 'bulk-delete-loading' });
+            if (errors.length === 0) {
+                toast.success(`✅ ${selected.length} clienti eliminati con successo!`, { id: 'bulk-delete-loading' });
+            } else if (successCount > 0) {
+                toast.success(`✅ ${successCount} clienti eliminati con successo. ${errors.length} errori.`, { id: 'bulk-delete-loading' });
+                console.warn('Errori durante l\'eliminazione:', errors.map(e => `${e.cliente}: ${e.error?.message || e.error}`));
+            } else {
+                toast.error(`❌ Errore durante l'eliminazione di tutti i clienti`, { id: 'bulk-delete-loading' });
+                console.error('Errori durante l\'eliminazione:', errors.map(e => `${e.cliente}: ${e.error?.message || e.error}`));
+            }
         } catch (error) {
             console.error('Errore durante l\'eliminazione multipla:', error);
             toast.error('❌ Errore durante l\'eliminazione dei clienti', { id: 'bulk-delete-loading' });
@@ -645,7 +888,7 @@ export default function ClientiPage() {
         toast.success('📄 Visualizzazione contratti...');
     };
 
-    const handleAddContract = (clienteId: string) => {
+    const handleAddContract = ( clienteId : string) => {
         toast('🔜 Funzione "Aggiungi Contratto" in sviluppo');
     };
 
@@ -838,8 +1081,17 @@ export default function ClientiPage() {
                                     </Link>
                                     {/* 🔐 SOLO ADMIN */}
                                     {isAdmin && (
-                                        <>
-                                            <button
+                            <>
+                                <button
+                                    onClick={() => setShowCSVImportModal(true)}
+                                    className="btn bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
+                                    title="Importa da CSV (Nuovo Sistema)"
+                                >
+                                    <Upload size={18} />
+                                    <span className="hidden md:inline">Import CSV</span>
+                                </button>
+                                
+                                <button
                                                 onClick={() => {
                                                     handleExportSingleClient(cliente);
                                                     setOpenActionMenu(null);
@@ -1116,7 +1368,7 @@ export default function ClientiPage() {
                             }`}
                             title="Vista Tabella Dettagliata"
                         >
-                            <Table2 size={20} />
+                            <Table size={20} />
                         </button>
                     </div>
 
@@ -1125,15 +1377,17 @@ export default function ClientiPage() {
                         {/* 🔐 PULSANTI ADMIN/SUPER_ADMIN ONLY */}
                         {isAdmin && (
                             <>
+
+                                
                                 <button
-                                    onClick={() => setShowImportModal(true)}
-                                    className="btn bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-2"
-                                    title="Importa da CSV/Excel (Template Fisso)"
+                                    onClick={() => setShowUnifiedImportModal(true)}
+                                    className="btn bg-blue-500 hover:bg-blue-600 text-white flex items-center gap-2"
+                                    title="Import Unificato (beta)"
                                 >
                                     <Upload size={18} />
-                                    <span className="hidden md:inline">Import CSV</span>
+                                    <span className="hidden md:inline">Import Unificato</span>
                                 </button>
-                                
+
                                 <button
                                     onClick={() => setShowWooCommerceImportModal(true)}
                                     className="btn bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
@@ -1150,6 +1404,14 @@ export default function ClientiPage() {
                                 >
                                     <Download size={18} />
                                     <span className="hidden md:inline">Esporta</span>
+                                </button>
+                                <button
+                                    onClick={handleExportCSVUniversale}
+                                    className="btn btn-secondary flex items-center gap-2"
+                                    title="Esporta CSV (Import Unificato)"
+                                >
+                                    <Download size={18} />
+                                    <span className="hidden md:inline">Esporta (Import)</span>
                                 </button>
                                 
                                 <button
@@ -1348,8 +1610,8 @@ export default function ClientiPage() {
                     {/* VISTA CARDS */}
                     {viewMode === 'cards' && (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {clienti.map((cliente) => (
-                                <div key={`${cliente.id}-${cliente.stato || 'none'}`} className="card hover:shadow-lg transition-shadow">
+                            {clienti.map((cliente, index) => (
+                            <div key={cliente.id || `card-${index}`} className="card hover:shadow-lg transition-shadow">
                                     <div className="flex items-start justify-between mb-3">
                                         <div className="flex items-center gap-3">
                                             <input
@@ -1440,16 +1702,29 @@ export default function ClientiPage() {
                                         <ActionsMenu cliente={cliente} inline={true} />
                                     </div>
                                 </div>
-                            ))}
+                                ))
+                            }
                         </div>
                     )}
 
                     {/* VISTA GRIGLIA */}
                     {viewMode === 'grid' && (
                         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                            {clienti.map((cliente) => (
+                            {loading ? (
+                                <div className="col-span-full flex items-center justify-center py-8">
+                                    <div className="flex items-center space-x-2">
+                                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                                        <span className="text-gray-600">Caricamento clienti...</span>
+                                    </div>
+                                </div>
+                            ) : clienti.length === 0 ? (
+                                <div className="col-span-full text-center py-8 text-gray-500">
+                                    Nessun cliente trovato
+                                </div>
+                            ) : (
+                                clienti.map((cliente) => (
                                 <Link
-                                    key={`${cliente.id}-${cliente.stato || 'none'}`}
+                                    key={cliente.id}
                                     to={`/clienti/${cliente.id}`}
                                     className="card hover:shadow-lg transition-all text-center group"
                                 >
@@ -1476,15 +1751,28 @@ export default function ClientiPage() {
                                     </h4>
                                     <p className="text-xs text-gray-500 truncate">{cliente.citta || 'N/D'}</p>
                                 </Link>
-                            ))}
+                                ))
+                            )}
                         </div>
                     )}
 
                     {/* VISTA LISTA */}
                     {viewMode === 'list' && (
                         <div className="card divide-y">
-                            {clienti.map((cliente) => (
-                                <div key={`${cliente.id}-${cliente.stato || 'none'}`} className="flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors">
+                            {loading ? (
+                                <div className="flex items-center justify-center py-8">
+                                    <div className="flex items-center space-x-2">
+                                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                                        <span className="text-gray-600">Caricamento clienti...</span>
+                                    </div>
+                                </div>
+                            ) : clienti.length === 0 ? (
+                                <div className="text-center py-8 text-gray-500">
+                                    Nessun cliente trovato
+                                </div>
+                            ) : (
+                                clienti.map((cliente, index) => (
+                                <div key={cliente.id || `list-${index}`} className="flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors">
                                     <input
                                         type="checkbox"
                                         checked={selectedClients.has(cliente.id)}
@@ -1522,7 +1810,8 @@ export default function ClientiPage() {
                                     </div>
                                     <ActionsMenu cliente={cliente} inline={true} />
                                 </div>
-                            ))}
+                                ))
+                            )}
                         </div>
                     )}
 
@@ -1556,8 +1845,24 @@ export default function ClientiPage() {
                                         </tr>
                                     </thead>
                                 <tbody className="divide-y">
-                                    {clienti.map((cliente) => (
-                                        <tr key={`${cliente.id}-${cliente.stato || 'none'}`} className="hover:bg-gray-50 transition-colors">
+                                    {loading ? (
+                                        <tr>
+                                            <td colSpan={isSuperAdmin ? 10 : 9} className="px-4 py-8 text-center">
+                                                <div className="flex items-center justify-center space-x-2">
+                                                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                                                    <span className="text-gray-600">Caricamento clienti...</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ) : clienti.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={isSuperAdmin ? 10 : 9} className="px-4 py-8 text-center text-gray-500">
+                                                Nessun cliente trovato
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        clienti.map((cliente, index) => (
+                                        <tr key={cliente.id || `cliente-${index}`} className="hover:bg-gray-50 transition-colors">
                                             <td className="px-2 py-2">
                                                 <input
                                                     type="checkbox"
@@ -1631,8 +1936,8 @@ export default function ClientiPage() {
                                                         title={agenti.find(a => a.id === cliente.assigned_agent_id)?.nome + ' ' + agenti.find(a => a.id === cliente.assigned_agent_id)?.cognome}
                                                     >
                                                         <option value="">Non assegnato</option>
-                                                        {agenti.map((agente) => (
-                                                            <option key={agente.id || agente.email} value={agente.id}>
+                                                        {agenti.map((agente, index) => (
+                                                            <option key={agente.id || `agente-${index}`} value={agente.id}>
                                                                 {agente.nome} {agente.cognome}
                                                             </option>
                                                         ))}
@@ -1723,7 +2028,8 @@ export default function ClientiPage() {
                                                 <ActionsMenu cliente={cliente} />
                                             </td>
                                         </tr>
-                                    ))}
+                                        ))
+                                    )}
                                 </tbody>
                             </table>
                             </div>
@@ -1770,17 +2076,24 @@ export default function ClientiPage() {
                 />
             )}
 
-            {/* Modale Importa Clienti */}
-            <ImportClientiModal
-                isOpen={showImportModal}
-                onClose={() => setShowImportModal(false)}
-                onImportComplete={() => loadClienti()}
-            />
+            {/* Modale CSV Import */}
+                <ImportClientiModal
+                    isOpen={showCSVImportModal}
+                    onClose={() => setShowCSVImportModal(false)}
+                    onImportComplete={() => loadClienti()}
+                />
 
             {/* Modale WooCommerce Import */}
             <WooCommerceImportModal
                 isOpen={showWooCommerceImportModal}
                 onClose={() => setShowWooCommerceImportModal(false)}
+                onImportComplete={() => loadClienti()}
+            />
+
+            {/* Modale Unified Import (beta) */}
+            <UnifiedImportModal
+                isOpen={showUnifiedImportModal}
+                onClose={() => setShowUnifiedImportModal(false)}
                 onImportComplete={() => loadClienti()}
             />
 

@@ -13,11 +13,17 @@ db.pragma('foreign_keys = ON');
 
 console.log('✅ Database SQLite connesso:', dbPath);
 
+// Tipi helper per risultati delle query
+export interface QueryResult<T = any> {
+    rows: T[];
+    rowCount: number;
+}
+
 /**
  * Pool compatibile con PostgreSQL
  */
 export const pool = {
-    query: (text: string, params: any[] = []) => {
+    query: <T = any>(text: string, params: any[] = []): Promise<QueryResult<T>> => {
         try {
             // Converti $1, $2 in ?
             let sqliteQuery = text;
@@ -43,7 +49,7 @@ export const pool = {
             // Esegui query
             if (sqliteQuery.trim().toUpperCase().startsWith('SELECT')) {
                 const stmt = db.prepare(sqliteQuery);
-                const rows = stmt.all(...params);
+                const rows = stmt.all(...params) as T[];
                 return Promise.resolve({ rows, rowCount: rows.length });
             } else {
                 const stmt = db.prepare(sqliteQuery);
@@ -54,12 +60,12 @@ export const pool = {
                     const tableName = sqliteQuery.match(/INSERT INTO\s+(\w+)/i)?.[1];
                     if (tableName && result.lastInsertRowid) {
                         const selectStmt = db.prepare(`SELECT * FROM ${tableName} WHERE rowid = ?`);
-                        const row = selectStmt.get(result.lastInsertRowid);
+                        const row = selectStmt.get(result.lastInsertRowid) as T | undefined;
                         return Promise.resolve({ rows: row ? [row] : [], rowCount: 1 });
                     }
                 }
                 
-                return Promise.resolve({ rows: [], rowCount: result.changes });
+                return Promise.resolve({ rows: [] as T[], rowCount: result.changes });
             }
         } catch (error) {
             console.error('❌ Errore query SQLite:', error);
@@ -70,7 +76,7 @@ export const pool = {
 
 export async function testConnection(): Promise<boolean> {
     try {
-        await pool.query('SELECT 1 as test');
+        await pool.query<{ test: number }>('SELECT 1 as test');
         console.log('✅ Test connessione SQLite OK');
         return true;
     } catch (error) {

@@ -57,13 +57,13 @@ router.get('/stats', async (req: Request, res: Response, next: NextFunction) => 
             SELECT COUNT(*) as count FROM contratti_luce 
             ${contrattiFilter}
             ${contrattiFilter ? 'AND' : 'WHERE'} stato = 'attivo' 
-            AND julianday(data_scadenza) - julianday('now') <= 30
+            AND julianday(data_fine) - julianday('now') <= 30
         `, contrattiParams);
         const scadenzeGas = await pool.query(`
             SELECT COUNT(*) as count FROM contratti_gas 
             ${contrattiFilter}
             ${contrattiFilter ? 'AND' : 'WHERE'} stato = 'attivo' 
-            AND julianday(data_scadenza) - julianday('now') <= 30
+            AND julianday(data_fine) - julianday('now') <= 30
         `, contrattiParams);
         
         // Statistiche email (ultimi 30 giorni)
@@ -157,12 +157,12 @@ router.get('/scadenze', async (req: Request, res: Response, next: NextFunction) 
                 'luce' as tipo_contratto,
                 cp.nome || ' ' || cp.cognome as cliente_nome,
                 ca.ragione_sociale as azienda_nome,
-                CAST((julianday(cl.data_scadenza) - julianday('now')) AS INTEGER) as giorni_a_scadenza
+                CAST((julianday(cl.data_fine) - julianday('now')) AS INTEGER) as giorni_a_scadenza
             FROM contratti_luce cl
             LEFT JOIN clienti_privati cp ON cl.cliente_privato_id = cp.id
             LEFT JOIN clienti_aziende ca ON cl.cliente_azienda_id = ca.id
             ${whereClause}
-            AND julianday(cl.data_scadenza) - julianday('now') <= 30
+            AND julianday(cl.data_fine) - julianday('now') <= 30
         `, params);
         
         // Query diretta per contratti gas in scadenza
@@ -172,12 +172,12 @@ router.get('/scadenze', async (req: Request, res: Response, next: NextFunction) 
                 'gas' as tipo_contratto,
                 cp.nome || ' ' || cp.cognome as cliente_nome,
                 ca.ragione_sociale as azienda_nome,
-                CAST((julianday(cg.data_scadenza) - julianday('now')) AS INTEGER) as giorni_a_scadenza
+                CAST((julianday(cg.data_fine) - julianday('now')) AS INTEGER) as giorni_a_scadenza
             FROM contratti_gas cg
             LEFT JOIN clienti_privati cp ON cg.cliente_privato_id = cp.id
             LEFT JOIN clienti_aziende ca ON cg.cliente_azienda_id = ca.id
             ${whereClause.replace('cl.', 'cg.')}
-            AND julianday(cg.data_scadenza) - julianday('now') <= 30
+            AND julianday(cg.data_fine) - julianday('now') <= 30
         `, params);
         
         // Combina e ordina

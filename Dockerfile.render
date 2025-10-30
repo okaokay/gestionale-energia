@@ -60,5 +60,8 @@ ENV DATABASE_PATH=/app/gestionale_energia.db
 # Espone la porta
 EXPOSE 3001
 
+# Assicuriamoci di essere nella directory corretta
+WORKDIR /app
+
 # Comando di avvio
-CMD ["node", "dist/backend/server.js"]
+CMD ["node", "/app/dist/backend/server.js"]
