@@ -47,7 +47,11 @@ export const pool = {
             }
             
             // Esegui query
-            if (sqliteQuery.trim().toUpperCase().startsWith('SELECT')) {
+            const isSelectLike = (() => {
+                const q = sqliteQuery.trim().toUpperCase();
+                return q.startsWith('SELECT') || q.startsWith('PRAGMA');
+            })();
+            if (isSelectLike) {
                 const stmt = db.prepare(sqliteQuery);
                 const rows = stmt.all(...params) as T[];
                 return Promise.resolve({ rows, rowCount: rows.length });

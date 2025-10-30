@@ -125,7 +125,7 @@ async function findClientePrivatoId(record: Record<string, string>): Promise<str
     return null;
 }
 
-async function insertClientePrivato(record: Record<string, string>, createdBy: string | null, dryRun: boolean): Promise<string> {
+async function insertClientePrivato(record: Record<string, string>, createdBy: string | null, assignedAgentId: string | null, dryRun: boolean): Promise<string> {
     // In SQLite il PK di clienti_privati è INTEGER (rowid) nel DB corrente.
     // Evitiamo UUID qui e usiamo last_insert_rowid() per ottenere l'ID appena inserito.
     if (dryRun) return randomUUID();
@@ -147,23 +147,36 @@ async function insertClientePrivato(record: Record<string, string>, createdBy: s
     const scadenza_doc = record.data_scadenza_documento || record.cliente_documento_data_scadenza || null;
     const iban = record.iban || null;
 
+    // Rileva colonne disponibili per compatibilità
+    const colsAvailable = await getTableColumns('clienti_privati');
+    const columns: string[] = [
+        'nome','cognome','codice_fiscale','data_nascita',
+        'email_principale','telefono_mobile','via_residenza',
+        'civico_residenza','cap_residenza','citta_residenza','provincia_residenza',
+        'tipo_documento','numero_documento','ente_rilascio','data_scadenza_documento','iban',
+        'consenso_privacy','consenso_marketing','data_consenso','created_by'
+    ];
+    const values: any[] = [
+        nome, cognome, cf, data_nascita,
+        email, tel, via,
+        civico, cap, citta, provincia,
+        tipo_doc, num_doc, ente, scadenza_doc, iban,
+        1, 1, new Date().toISOString(), createdBy
+    ];
+    if (colsAvailable.includes('assigned_agent_id') && assignedAgentId) {
+        columns.push('assigned_agent_id');
+        values.push(assignedAgentId);
+    }
+    if (colsAvailable.includes('created_at')) {
+        columns.push('created_at');
+        values.push(new Date().toISOString());
+    }
+
+    const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
     await pool.query(`
-        INSERT INTO clienti_privati (
-            nome, cognome, codice_fiscale, data_nascita,
-            email_principale, telefono_mobile, via_residenza,
-            civico_residenza, cap_residenza, citta_residenza, provincia_residenza,
-            tipo_documento, numero_documento, ente_rilascio, data_scadenza_documento, iban,
-            consenso_privacy, consenso_marketing, data_consenso,
-            created_by, created_at
-        ) VALUES (
-            $1, $2, $3, $4,
-            $5, $6, $7,
-            $8, $9, $10, $11,
-            $12, $13, $14, $15, $16,
-            1, 1, datetime('now'),
-            $17, datetime('now')
-        )
-    `, [nome, cognome, cf, data_nascita, email, tel, via, civico, cap, citta, provincia, tipo_doc, num_doc, ente, scadenza_doc, iban, createdBy]);
+        INSERT INTO clienti_privati (${columns.join(', ')})
+        VALUES (${placeholders})
+    `, values);
 
     const sel = await pool.query<{ id: number }>(`SELECT last_insert_rowid() as id`);
     const id = sel.rows?.[0]?.id;
@@ -175,11 +188,12 @@ async function insertContrattoLuce(record: Record<string, string>, clienteId: st
     if (dryRun) return id;
 
     const numero_contratto = record.numero_contratto || record.contratto_luce_numero || record.numero_contratto_luce || null;
-    const pod = record.pod || record.contratto_luce_pod || null;
+    const pod = record.pod || record.contratto_luce_pod || (record as any).pod_pdr || null;
     const fornitore = record.fornitore || record.contratto_luce_fornitore_precedente || null;
     const data_attivazione = record.data_attivazione || record.contratto_luce_data_inizio || null;
     const data_scadenza = record.data_scadenza || record.contratto_luce_data_fine || record.contratto_luce_data_scadenza || null;
     const prezzo_energia = record.prezzo_energia || record.contratto_luce_prezzo_energia || null;
+    const stato_csv = (record.stato || record.stato_contratto || (record as any)['stato contratto luce'] || record.stato_contratto_luce || null);
 
     // Determina il nome della colonna di scadenza presente nel DB
     const scadenzaCol = await getScadenzaColumn('contratti_luce');
@@ -196,7 +210,7 @@ async function insertContrattoLuce(record: Record<string, string>, clienteId: st
     }
     if (colsAvailable.includes('stato')) {
         columns.push('stato');
-        values.push('attivo');
+        values.push(stato_csv || 'compilazione');
     }
     if (colsAvailable.includes('created_by')) {
         columns.push('created_by');
@@ -214,16 +228,96 @@ async function insertContrattoLuce(record: Record<string, string>, clienteId: st
     return id;
 }
 
+// Trova un contratto luce esistente tramite numero_contratto o POD (eventualmente legato al cliente)
+async function findContrattoLuceId(record: Record<string, string>, clienteId?: string): Promise<string | null> {
+    const numero_contratto = record.numero_contratto || record.contratto_luce_numero || record.numero_contratto_luce || null;
+    const pod = record.pod || record.contratto_luce_pod || (record as any).pod_pdr || null;
+    // Prima prova con numero_contratto
+    if (numero_contratto) {
+        try {
+            const res = await pool.query<{ id: number | string }>('SELECT id FROM contratti_luce WHERE numero_contratto = $1 LIMIT 1', [numero_contratto]);
+            if (res.rows?.[0]?.id) return String(res.rows[0].id);
+        } catch {}
+    }
+    // Poi prova con POD
+    if (pod) {
+        try {
+            // Se disponibile, usa anche il cliente come contesto
+            const cols = await getTableColumns('contratti_luce');
+            let query = 'SELECT id FROM contratti_luce WHERE pod = $1';
+            const params: any[] = [pod];
+            if (clienteId) {
+                if (cols.includes('cliente_privato_id')) {
+                    query += ' AND cliente_privato_id = $2';
+                    params.push(clienteId);
+                } else if (cols.includes('cliente_id')) {
+                    query += ' AND cliente_id = $2';
+                    params.push(clienteId);
+                }
+            }
+            query += ' LIMIT 1';
+            const res = await pool.query<{ id: number | string }>(query, params);
+            if (res.rows?.[0]?.id) return String(res.rows[0].id);
+        } catch {}
+    }
+    return null;
+}
+
+// Effettua UPSERT per contratto luce: se esiste aggiorna, altrimenti inserisce
+async function upsertContrattoLuce(record: Record<string, string>, clienteId: string, createdBy: string | null, dryRun: boolean): Promise<{ id: string; action: 'inserted' | 'updated' | 'would_insert' | 'would_update' }> {
+    const modeRaw = (record as any).modalita_import || '';
+    const mode = String(modeRaw).toLowerCase();
+    const shouldUpdate = mode === 'update' || mode === 'upsert';
+
+    const existingId = await findContrattoLuceId(record, clienteId);
+    if (shouldUpdate && existingId) {
+        if (dryRun) return { id: existingId, action: 'would_update' };
+
+        const numero_contratto = record.numero_contratto || record.contratto_luce_numero || record.numero_contratto_luce || null;
+        const pod = record.pod || record.contratto_luce_pod || (record as any).pod_pdr || null;
+        const fornitore = record.fornitore || record.contratto_luce_fornitore_precedente || null;
+        const data_attivazione = record.data_attivazione || record.contratto_luce_data_inizio || null;
+        const data_scadenza = record.data_scadenza || record.contratto_luce_data_fine || record.contratto_luce_data_scadenza || null;
+        const prezzo_energia = record.prezzo_energia || record.contratto_luce_prezzo_energia || null;
+        const stato_csv = (record.stato || record.stato_contratto || (record as any)['stato contratto luce'] || record.stato_contratto_luce || null);
+
+        const scadenzaCol = await getScadenzaColumn('contratti_luce');
+        const colsAvailable = await getTableColumns('contratti_luce');
+
+        const sets: string[] = [];
+        const params: any[] = [];
+        if (numero_contratto !== null) { sets.push('numero_contratto = $' + (params.push(numero_contratto))); }
+        if (pod !== null) { sets.push('pod = $' + (params.push(pod))); }
+        if (fornitore !== null) { sets.push('fornitore = $' + (params.push(fornitore))); }
+        if (data_attivazione !== null) { sets.push('data_attivazione = $' + (params.push(data_attivazione))); }
+        if (data_scadenza !== null) { sets.push(`${scadenzaCol} = $` + (params.push(data_scadenza))); }
+        if (colsAvailable.includes('prezzo_energia')) { sets.push('prezzo_energia = $' + (params.push(prezzo_energia))); }
+        if (colsAvailable.includes('stato')) { sets.push('stato = $' + (params.push(stato_csv || 'compilazione'))); }
+
+        if (sets.length > 0) {
+            params.push(existingId);
+            const setClause = sets.join(', ');
+            await pool.query(`UPDATE contratti_luce SET ${setClause} WHERE id = $${params.length}`, params);
+        }
+        return { id: existingId, action: 'updated' };
+    }
+
+    // Fallback: inserisci
+    const newId = await insertContrattoLuce(record, clienteId, createdBy, dryRun);
+    return { id: newId, action: dryRun ? 'would_insert' : 'inserted' };
+}
+
 async function insertContrattoGas(record: Record<string, string>, clienteId: string, createdBy: string | null, dryRun: boolean): Promise<string> {
     const id = randomUUID();
     if (dryRun) return id;
 
     const numero_contratto = record.numero_contratto || record.contratto_gas_numero || record.numero_contratto_gas || null;
-    const pdr = record.pdr || record.contratto_gas_pdr || null;
+    const pdr = record.pdr || record.contratto_gas_pdr || (record as any).pod_pdr || null;
     const fornitore = record.fornitore || record.contratto_gas_fornitore_precedente || null;
     const data_attivazione = record.data_attivazione || record.contratto_gas_data_inizio || null;
     const data_scadenza = record.data_scadenza || record.contratto_gas_data_fine || record.contratto_gas_data_scadenza || null;
     const prezzo_gas = record.prezzo_gas || record.contratto_gas_prezzo_gas || null;
+    const stato_csv = (record.stato || record.stato_contratto || (record as any)['stato contratto gas'] || record.stato_contratto_gas || null);
 
     const scadenzaCol = await getScadenzaColumn('contratti_gas');
 
@@ -238,7 +332,7 @@ async function insertContrattoGas(record: Record<string, string>, clienteId: str
     }
     if (colsAvailable.includes('stato')) {
         columns.push('stato');
-        values.push('attivo');
+        values.push(stato_csv || 'compilazione');
     }
     if (colsAvailable.includes('created_by')) {
         columns.push('created_by');
@@ -254,6 +348,81 @@ async function insertContrattoGas(record: Record<string, string>, clienteId: str
     `, values);
 
     return id;
+}
+
+// Trova un contratto gas esistente tramite numero_contratto o PDR (eventualmente legato al cliente)
+async function findContrattoGasId(record: Record<string, string>, clienteId?: string): Promise<string | null> {
+    const numero_contratto = record.numero_contratto || record.contratto_gas_numero || record.numero_contratto_gas || null;
+    const pdr = record.pdr || record.contratto_gas_pdr || (record as any).pod_pdr || null;
+    if (numero_contratto) {
+        try {
+            const res = await pool.query<{ id: number | string }>('SELECT id FROM contratti_gas WHERE numero_contratto = $1 LIMIT 1', [numero_contratto]);
+            if (res.rows?.[0]?.id) return String(res.rows[0].id);
+        } catch {}
+    }
+    if (pdr) {
+        try {
+            const cols = await getTableColumns('contratti_gas');
+            let query = 'SELECT id FROM contratti_gas WHERE pdr = $1';
+            const params: any[] = [pdr];
+            if (clienteId) {
+                if (cols.includes('cliente_privato_id')) {
+                    query += ' AND cliente_privato_id = $2';
+                    params.push(clienteId);
+                } else if (cols.includes('cliente_id')) {
+                    query += ' AND cliente_id = $2';
+                    params.push(clienteId);
+                }
+            }
+            query += ' LIMIT 1';
+            const res = await pool.query<{ id: number | string }>(query, params);
+            if (res.rows?.[0]?.id) return String(res.rows[0].id);
+        } catch {}
+    }
+    return null;
+}
+
+// Effettua UPSERT per contratto gas: se esiste aggiorna, altrimenti inserisce
+async function upsertContrattoGas(record: Record<string, string>, clienteId: string, createdBy: string | null, dryRun: boolean): Promise<{ id: string; action: 'inserted' | 'updated' | 'would_insert' | 'would_update' }> {
+    const modeRaw = (record as any).modalita_import || '';
+    const mode = String(modeRaw).toLowerCase();
+    const shouldUpdate = mode === 'update' || mode === 'upsert';
+
+    const existingId = await findContrattoGasId(record, clienteId);
+    if (shouldUpdate && existingId) {
+        if (dryRun) return { id: existingId, action: 'would_update' };
+
+        const numero_contratto = record.numero_contratto || record.contratto_gas_numero || record.numero_contratto_gas || null;
+        const pdr = record.pdr || record.contratto_gas_pdr || (record as any).pod_pdr || null;
+        const fornitore = record.fornitore || record.contratto_gas_fornitore_precedente || null;
+        const data_attivazione = record.data_attivazione || record.contratto_gas_data_inizio || null;
+        const data_scadenza = record.data_scadenza || record.contratto_gas_data_fine || record.contratto_gas_data_scadenza || null;
+        const prezzo_gas = record.prezzo_gas || record.contratto_gas_prezzo_gas || null;
+        const stato_csv = (record.stato || record.stato_contratto || (record as any)['stato contratto gas'] || record.stato_contratto_gas || null);
+
+        const scadenzaCol = await getScadenzaColumn('contratti_gas');
+        const colsAvailable = await getTableColumns('contratti_gas');
+
+        const sets: string[] = [];
+        const params: any[] = [];
+        if (numero_contratto !== null) { sets.push('numero_contratto = $' + (params.push(numero_contratto))); }
+        if (pdr !== null) { sets.push('pdr = $' + (params.push(pdr))); }
+        if (fornitore !== null) { sets.push('fornitore = $' + (params.push(fornitore))); }
+        if (data_attivazione !== null) { sets.push('data_attivazione = $' + (params.push(data_attivazione))); }
+        if (data_scadenza !== null) { sets.push(`${scadenzaCol} = $` + (params.push(data_scadenza))); }
+        if (colsAvailable.includes('prezzo_gas')) { sets.push('prezzo_gas = $' + (params.push(prezzo_gas))); }
+        if (colsAvailable.includes('stato')) { sets.push('stato = $' + (params.push(stato_csv || 'compilazione'))); }
+
+        if (sets.length > 0) {
+            params.push(existingId);
+            const setClause = sets.join(', ');
+            await pool.query(`UPDATE contratti_gas SET ${setClause} WHERE id = $${params.length}`, params);
+        }
+        return { id: existingId, action: 'updated' };
+    }
+
+    const newId = await insertContrattoGas(record, clienteId, createdBy, dryRun);
+    return { id: newId, action: dryRun ? 'would_insert' : 'inserted' };
 }
 
 function detectRecordType(rec: Record<string, string>): string {
@@ -313,6 +482,14 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         const { headers, records } = parseCsvSimple(content);
         activeImports[importId].result.totalRows = records.length;
 
+        // Debug: colonne disponibili in clienti_privati/aziende
+        try {
+            const colsPriv = await getTableColumns('clienti_privati');
+            const colsAz = await getTableColumns('clienti_aziende');
+            activeImports[importId].result.warnings.push(`clienti_privati colonne: ${colsPriv.join(', ')}`);
+            activeImports[importId].result.warnings.push(`clienti_aziende colonne: ${colsAz.join(', ')}`);
+        } catch {}
+
         // Created_by: prendi un admin esistente se possibile
         let createdBy: string | null = null;
         try {
@@ -345,40 +522,111 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                 // associazione agente se richiesto
                 let assignedUserId: string | null = null;
                 if (!options.skipAssociation) {
-                    assignedUserId = await findUserIdByEmail(rec.assigned_agent_email || rec.agent_email || rec.assegnato_a_email);
+                    // Supporta sia chiave inglese che italiana e ID diretto
+                    const directId = (rec.assigned_agent_id || (rec as any).agente_id || (rec as any).agent_id);
+                    if (directId) {
+                        assignedUserId = String(directId);
+                    } else {
+                        assignedUserId = await findUserIdByEmail(
+                            (rec as any).assigned_agent_email || (rec as any).agente_email || (rec as any).agent_email || (rec as any).assegnato_a_email
+                        );
+                    }
+                }
+
+                // Debug: registra agente rilevato per cliente_privato
+                if (tipo === 'cliente_privato') {
+                    activeImports[importId].result.warnings.push(`Riga ${rowNum}: agente rilevato = ${assignedUserId || 'null'}`);
                 }
 
                 // Inserimento per tipo
                 if (tipo === 'cliente_privato') {
                     const existingId = await findClientePrivatoId(rec);
-                    const clienteId = existingId || await insertClientePrivato(rec, createdBy || assignedUserId, !!options.dryRun);
+                    let clienteId = existingId || await insertClientePrivato(rec, createdBy || assignedUserId, assignedUserId, !!options.dryRun);
                     if (!existingId) activeImports[importId].result.inserted.clienti_privati++;
+                    // Se il cliente esiste già, aggiorna l'assegnazione agente se disponibile
+                    if (existingId && assignedUserId && !options.dryRun) {
+                        try {
+                            const cols = await getTableColumns('clienti_privati');
+                            if (cols.includes('assigned_agent_id')) {
+                                const upd = await pool.query(`UPDATE clienti_privati SET assigned_agent_id = $1 WHERE id = $2`, [assignedUserId, clienteId]);
+                                activeImports[importId].result.warnings.push(`Riga ${rowNum}: update assigned_agent_id cliente_id=${clienteId}, changes=${upd.rowCount}`);
+                            } else {
+                                activeImports[importId].result.warnings.push(`Riga ${rowNum}: colonna assigned_agent_id non presente, skip update`);
+                            }
+                        } catch (e) {
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: impossibile aggiornare assegnazione agente (${(e as any)?.message || 'errore'})`);
+                        }
+                    }
                     // Se nel record ci sono campi contratto luce/gas, inseriscili
                     if (rec.pod || rec.contratto_luce_pod || rec.numero_contratto_luce) {
-                        await insertContrattoLuce(rec, clienteId, createdBy || assignedUserId, !!options.dryRun);
-                        activeImports[importId].result.inserted.contratti_luce++;
+                        const up = await upsertContrattoLuce(rec, clienteId, createdBy || assignedUserId, !!options.dryRun);
+                        if (up.action === 'inserted' || up.action === 'would_insert') {
+                            activeImports[importId].result.inserted.contratti_luce++;
+                        } else {
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: contratto_luce ${up.id} aggiornato (${up.action})`);
+                        }
                     }
                     if (rec.pdr || rec.contratto_gas_pdr || rec.numero_contratto_gas) {
-                        await insertContrattoGas(rec, clienteId, createdBy || assignedUserId, !!options.dryRun);
-                        activeImports[importId].result.inserted.contratti_gas++;
+                        const up = await upsertContrattoGas(rec, clienteId, createdBy || assignedUserId, !!options.dryRun);
+                        if (up.action === 'inserted' || up.action === 'would_insert') {
+                            activeImports[importId].result.inserted.contratti_gas++;
+                        } else {
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: contratto_gas ${up.id} aggiornato (${up.action})`);
+                        }
                     }
                 } else if (tipo === 'contratto_luce') {
                     let clienteId = await findClientePrivatoId(rec);
                     if (!clienteId) {
                         // crea cliente minimo se mancante
-                        clienteId = await insertClientePrivato(rec, createdBy || assignedUserId, !!options.dryRun);
+                        clienteId = await insertClientePrivato(rec, createdBy || assignedUserId, assignedUserId, !!options.dryRun);
                         activeImports[importId].result.inserted.clienti_privati++;
                     }
-                    await insertContrattoLuce(rec, clienteId, createdBy || assignedUserId, !!options.dryRun);
-                    activeImports[importId].result.inserted.contratti_luce++;
+                    // Aggiorna assegnazione agente anche su contratti, se disponibile
+                    if (assignedUserId && !options.dryRun) {
+                        try {
+                            const cols = await getTableColumns('clienti_privati');
+                            if (cols.includes('assigned_agent_id')) {
+                                const upd = await pool.query(`UPDATE clienti_privati SET assigned_agent_id = $1 WHERE id = $2`, [assignedUserId, clienteId]);
+                                activeImports[importId].result.warnings.push(`Riga ${rowNum}: update assigned_agent_id da contratto_luce cliente_id=${clienteId}, changes=${upd.rowCount}`);
+                            }
+                        } catch (e) {
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: impossibile aggiornare assegnazione agente da contratto_luce (${(e as any)?.message || 'errore'})`);
+                        }
+                    }
+                    {
+                        const up = await upsertContrattoLuce(rec, clienteId, createdBy || assignedUserId, !!options.dryRun);
+                        if (up.action === 'inserted' || up.action === 'would_insert') {
+                            activeImports[importId].result.inserted.contratti_luce++;
+                        } else {
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: contratto_luce ${up.id} aggiornato (${up.action})`);
+                        }
+                    }
                 } else if (tipo === 'contratto_gas') {
                     let clienteId = await findClientePrivatoId(rec);
                     if (!clienteId) {
-                        clienteId = await insertClientePrivato(rec, createdBy || assignedUserId, !!options.dryRun);
+                        clienteId = await insertClientePrivato(rec, createdBy || assignedUserId, assignedUserId, !!options.dryRun);
                         activeImports[importId].result.inserted.clienti_privati++;
                     }
-                    await insertContrattoGas(rec, clienteId, createdBy || assignedUserId, !!options.dryRun);
-                    activeImports[importId].result.inserted.contratti_gas++;
+                    // Aggiorna assegnazione agente anche su contratti, se disponibile
+                    if (assignedUserId && !options.dryRun) {
+                        try {
+                            const cols = await getTableColumns('clienti_privati');
+                            if (cols.includes('assigned_agent_id')) {
+                                const upd = await pool.query(`UPDATE clienti_privati SET assigned_agent_id = $1 WHERE id = $2`, [assignedUserId, clienteId]);
+                                activeImports[importId].result.warnings.push(`Riga ${rowNum}: update assigned_agent_id da contratto_gas cliente_id=${clienteId}, changes=${upd.rowCount}`);
+                            }
+                        } catch (e) {
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: impossibile aggiornare assegnazione agente da contratto_gas (${(e as any)?.message || 'errore'})`);
+                        }
+                    }
+                    {
+                        const up = await upsertContrattoGas(rec, clienteId, createdBy || assignedUserId, !!options.dryRun);
+                        if (up.action === 'inserted' || up.action === 'would_insert') {
+                            activeImports[importId].result.inserted.contratti_gas++;
+                        } else {
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: contratto_gas ${up.id} aggiornato (${up.action})`);
+                        }
+                    }
                 } else if (tipo === 'cliente_azienda') {
                     // TODO: estendere per aziende se necessario (simile a privati con tabella clienti_aziende)
                     activeImports[importId].result.warnings.push(`Riga ${rowNum}: import clienti_azienda non implementato in questa versione`);

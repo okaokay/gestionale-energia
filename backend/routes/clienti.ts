@@ -1680,9 +1680,39 @@ router.post('/woocommerce-import', upload.single('file'), async (req: Request, r
                     }
                 }
 
-                // Assegna automaticamente l'agente se operatore
+                // Helper per trovare l'ID utente tramite email
+                const findUserIdByEmail = async (email?: string): Promise<string | null> => {
+                    if (!email) return null;
+                    try {
+                        const res = await pool.query('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
+                        const row = res.rows?.[0];
+                        return row ? String((row as any).id) : null;
+                    } catch {
+                        return null;
+                    }
+                };
+
+                // Determina l'agente assegnato
                 const user = (req as any).user;
-                const assignedAgentId = (user.role === 'operatore' || user.role === 'agent') ? user.id : null;
+                let assignedAgentId: string | null = null;
+
+                // 1) ID diretto dal CSV (se presente)
+                if (clienteData.assigned_agent_id) {
+                    assignedAgentId = String(clienteData.assigned_agent_id);
+                }
+
+                // 2) Altrimenti prova via email (supporta chiavi italiane/inglesi)
+                if (!assignedAgentId) {
+                    const emailAgente = clienteData.assigned_agent_email || clienteData.agente_email || clienteData.agent_email || clienteData.assegnato_a_email;
+                    if (emailAgente) {
+                        assignedAgentId = await findUserIdByEmail(emailAgente);
+                    }
+                }
+
+                // 3) Fallback: assegna automaticamente se operatore
+                if (!assignedAgentId && (user.role === 'operatore' || user.role === 'agent')) {
+                    assignedAgentId = user.id;
+                }
 
                 if (clientType === 'privato') {
                     // Validazioni minime per cliente privato
@@ -1714,11 +1744,17 @@ router.post('/woocommerce-import', upload.single('file'), async (req: Request, r
                         const updateValues: any[] = [];
                         
                         Object.keys(clienteData).forEach(key => {
-                            if (clienteData[key] !== null) {
+                            if (clienteData[key] !== null && key !== 'assigned_agent_email') {
                                 updateFields.push(`${key} = ?`);
                                 updateValues.push(clienteData[key]);
                             }
                         });
+
+                        // Aggiungi assigned_agent_id se determinato
+                        if (assignedAgentId) {
+                            updateFields.push('assigned_agent_id = ?');
+                            updateValues.push(assignedAgentId);
+                        }
 
                         if (updateFields.length > 0) {
                             updateValues.push(clienteId);
@@ -1776,11 +1812,17 @@ router.post('/woocommerce-import', upload.single('file'), async (req: Request, r
                         const updateValues: any[] = [];
                         
                         Object.keys(clienteData).forEach(key => {
-                            if (clienteData[key] !== null) {
+                            if (clienteData[key] !== null && key !== 'assigned_agent_email') {
                                 updateFields.push(`${key} = ?`);
                                 updateValues.push(clienteData[key]);
                             }
                         });
+
+                        // Aggiungi assigned_agent_id se determinato
+                        if (assignedAgentId) {
+                            updateFields.push('assigned_agent_id = ?');
+                            updateValues.push(assignedAgentId);
+                        }
 
                         if (updateFields.length > 0) {
                             updateValues.push(clienteId);

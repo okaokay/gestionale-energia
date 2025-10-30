@@ -98,6 +98,11 @@ async function run(csvPathArg, modeArg) {
       console.log('\n✅ Nessun errore riportato');
     }
 
+    if (Array.isArray(result.warnings) && result.warnings.length > 0) {
+      console.log('\n⚠️ Avvisi (prime 15):');
+      result.warnings.slice(0, 15).forEach((w, i) => console.log(`${i + 1}. ${w}`));
+    }
+
     console.log('\n✅ Test completato');
   } catch (error) {
     console.error('\n❌ Errore test:', error.message);

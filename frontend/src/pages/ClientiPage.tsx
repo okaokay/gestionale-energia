@@ -647,7 +647,9 @@ export default function ClientiPage() {
                 // cliente azienda
                 'ragione_sociale','partita_iva','codice_ateco','pec_aziendale',
                 // contratto
-                'numero_contratto','pod','pdr','fornitore','data_attivazione','data_scadenza','prezzo_energia','prezzo_gas','stato_contratto'
+                'numero_contratto','pod','pdr','fornitore','data_attivazione','data_scadenza','prezzo_energia','prezzo_gas','stato_contratto',
+                // agente e fattori economici
+                'agente_email','agente_nome','assigned_agent_id','commissione_luce','commissione_gas','commissione_pattuita','stato_cliente'
             ];
             lines.push(header.join(','));
 
@@ -663,14 +665,16 @@ export default function ClientiPage() {
                         esc(d.nome),esc(d.cognome),esc(d.codice_fiscale),esc(d.data_nascita),esc(d.email_principale),esc(d.telefono_mobile),
                         esc(d.via_residenza),esc(d.civico_residenza),esc(d.cap_residenza),esc(d.citta_residenza),esc(d.provincia_residenza),
                         '', '', esc(d.codice_ateco), esc(d.pec_aziendale),
-                        '', '', '', '', '', '', '', '', ''
+                        '', '', '', '', '', '', '', '', '',
+                        esc(d.agente_email), esc(d.agente_nome), esc(d.assigned_agent_id), esc(d.commissione_luce), esc(d.commissione_gas), esc(d.commissione_pattuita), esc(d.stato)
                     ].join(','));
                 } else {
                     lines.push([
                         'cliente_azienda','update',
                         '', '', '', '', esc(d.email_principale), esc(d.telefono_mobile), '', '', '', '', '',
                         esc(d.ragione_sociale), esc(d.partita_iva), esc(d.codice_ateco), esc(d.pec_aziendale),
-                        '', '', '', '', '', '', '', '', ''
+                        '', '', '', '', '', '', '', '', '',
+                        esc(d.agente_email), esc(d.agente_nome), esc(d.assigned_agent_id), esc(d.commissione_luce), esc(d.commissione_gas), esc(d.commissione_pattuita), esc(d.stato)
                     ].join(','));
                 }
 
@@ -686,7 +690,8 @@ export default function ClientiPage() {
                         tipoCliente === 'azienda' ? esc(d.ragione_sociale) : '',
                         tipoCliente === 'azienda' ? esc(d.partita_iva) : '',
                         '', '',
-                        esc(c.numero_contratto), esc(c.pod), '', esc(c.fornitore), esc(c.data_attivazione), esc(c.data_scadenza), esc(c.prezzo_energia), '', esc(c.stato || c.stato_contratto)
+                        esc(c.numero_contratto), esc(c.pod), '', esc(c.fornitore), esc(c.data_attivazione), esc(c.data_scadenza), esc(c.prezzo_energia), '', esc(c.stato || c.stato_contratto),
+                        esc(d.agente_email), esc(d.agente_nome), esc(d.assigned_agent_id), esc(d.commissione_luce), esc(d.commissione_gas), esc(d.commissione_pattuita), esc(d.stato)
                     ].join(','));
                 }
 
@@ -702,7 +707,8 @@ export default function ClientiPage() {
                         tipoCliente === 'azienda' ? esc(d.ragione_sociale) : '',
                         tipoCliente === 'azienda' ? esc(d.partita_iva) : '',
                         '', '',
-                        esc(c.numero_contratto), '', esc(c.pdr), esc(c.fornitore), esc(c.data_attivazione), esc(c.data_scadenza), '', esc(c.prezzo_gas), esc(c.stato || c.stato_contratto)
+                        esc(c.numero_contratto), '', esc(c.pdr), esc(c.fornitore), esc(c.data_attivazione), esc(c.data_scadenza), '', esc(c.prezzo_gas), esc(c.stato || c.stato_contratto),
+                        esc(d.agente_email), esc(d.agente_nome), esc(d.assigned_agent_id), esc(d.commissione_luce), esc(d.commissione_gas), esc(d.commissione_pattuita), esc(d.stato)
                     ].join(','));
                 }
             }
