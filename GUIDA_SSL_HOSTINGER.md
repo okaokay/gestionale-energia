@@ -1,26 +1,51 @@
-# Guida Attivazione SSL su Hostinger per gmgestionale.cloud
+# Guida SSL per VPS Hostinger - gmgestionale.cloud
 
 ## 📋 Prerequisiti
 - Dominio `gmgestionale.cloud` configurato e attivo
-- Applicazione deployata su Hostinger con Docker Manager
-- Accesso al pannello di controllo Hostinger
+- VPS Hostinger con accesso SSH
+- Applicazione deployata con Docker
+- Accesso root al server
 
-## 🔐 Attivazione SSL Automatica
+## ⚠️ IMPORTANTE: Configurazione per VPS (non Hosting Condiviso)
 
-### Passo 1: Accesso al Pannello SSL
-1. Accedi al **pannello di controllo Hostinger**
-2. Vai su **Domini** → **gmgestionale.cloud**
-3. Clicca su **SSL/TLS**
+Dato che hai un **VPS** e non un piano hosting condiviso, devi configurare SSL direttamente sul server tramite SSH.
 
-### Passo 2: Attivazione SSL Gratuito
-1. Seleziona **SSL Gratuito** (Let's Encrypt)
-2. Clicca su **Attiva SSL**
-3. Attendi la generazione automatica del certificato (2-10 minuti)
+## 🔐 Configurazione SSL su VPS
 
-### Passo 3: Verifica Configurazione
+### Passo 1: Accesso al VPS
+```bash
+# Connettiti al tuo VPS via SSH
+ssh root@srv1072066.hstgr.cloud
+# oppure
+ssh root@[IP_DEL_TUO_VPS]
+```
+
+### Passo 2: Installazione Certbot (Let's Encrypt)
+```bash
+# Aggiorna il sistema
+apt update && apt upgrade -y
+
+# Installa Certbot
+apt install certbot python3-certbot-nginx -y
+```
+
+### Passo 3: Generazione Certificato SSL
+```bash
+# Genera certificato SSL per il dominio
+certbot --nginx -d gmgestionale.cloud -d www.gmgestionale.cloud
+
+# Oppure solo per il dominio principale
+certbot --nginx -d gmgestionale.cloud
+```
+
+### Passo 4: Configurazione Automatica Nginx
+Certbot configurerà automaticamente Nginx per SSL, ma verifica che sia corretto.
+
+### Passo 5: Verifica Configurazione
 1. Verifica che lo stato SSL sia **Attivo**
 2. Testa l'accesso a `https://gmgestionale.cloud`
-3. Controlla che il certificato sia valido nel browser
+3. Testa gli endpoint API: `https://gmgestionale.cloud/api/health`
+4. Controlla che il certificato sia valido nel browser (icona lucchetto verde)
 
 ## 🔧 Configurazione Nginx per SSL
 
@@ -62,17 +87,47 @@ server {
 }
 ```
 
-## 🚀 Configurazione Consigliata per Hostinger
+## 🚀 Configurazione Consigliata per VPS
 
-### Opzione 1: SSL Gestito da Hostinger (Consigliato)
-- **Vantaggi**: Automatico, rinnovato automaticamente, zero configurazione
-- **Configurazione**: Usa solo la porta 80 nel container, Hostinger gestisce HTTPS
-- **File da usare**: `docker-compose.prod.yml` attuale (già configurato)
+### Opzione 1: SSL con Certbot + Nginx Reverse Proxy (Consigliato)
+- **Vantaggi**: Automatico, rinnovato automaticamente, configurazione standard
+- **Configurazione**: Nginx sul VPS fa da reverse proxy al container Docker
+- **Rinnovo**: Automatico tramite cron job di Certbot
 
 ### Opzione 2: SSL Gestito da Nginx nel Container
 - **Vantaggi**: Controllo completo, configurazione personalizzata
 - **Svantaggi**: Gestione manuale dei certificati
 - **Configurazione**: Richiede certificati SSL nel volume `/ssl`
+
+### Configurazione Nginx VPS per Reverse Proxy
+```nginx
+# /etc/nginx/sites-available/gmgestionale.cloud
+server {
+    listen 80;
+    server_name gmgestionale.cloud www.gmgestionale.cloud;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name gmgestionale.cloud www.gmgestionale.cloud;
+
+    ssl_certificate /etc/letsencrypt/live/gmgestionale.cloud/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/gmgestionale.cloud/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:8080;  # Porta del tuo container Docker
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
 
 ## 📝 Checklist Post-Attivazione SSL
 
@@ -89,13 +144,14 @@ server {
 - [ ] Verifica headers di sicurezza
 - [ ] Test HSTS (Strict Transport Security)
 
-## 🔧 Risoluzione Problemi Comuni
+## 🔧 Risoluzione Problemi Comuni su VPS
 
 ### Problema: "Certificato non valido"
 **Soluzione**: 
-1. Attendi 10-15 minuti dopo l'attivazione
-2. Svuota cache del browser
-3. Verifica che il dominio punti correttamente ai DNS di Hostinger
+1. Verifica che Certbot abbia completato correttamente: `certbot certificates`
+2. Controlla i log di Nginx: `tail -f /var/log/nginx/error.log`
+3. Verifica che il dominio punti correttamente all'IP del VPS
+4. Riavvia Nginx: `systemctl restart nginx`
 
 ### Problema: "Mixed Content" (contenuti misti)
 **Soluzione**:
@@ -106,12 +162,41 @@ server {
 ### Problema: "Redirect Loop"
 **Soluzione**:
 1. Verifica la configurazione `TRUST_PROXY=true` nel container
-2. Controlla gli header `X-Forwarded-Proto` in nginx.conf
+2. Controlla gli header `X-Forwarded-Proto` nella configurazione Nginx del VPS
+3. Verifica che il container Docker sia raggiungibile: `curl http://localhost:8080`
+
+### Problema: "Connection Refused"
+**Soluzione**:
+1. Verifica che il container Docker sia in esecuzione: `docker ps`
+2. Controlla che la porta sia esposta correttamente nel docker-compose
+3. Verifica il firewall del VPS: `ufw status`
+4. Testa la connessione locale: `curl http://localhost:8080`
+
+### Comandi Utili per Debug
+```bash
+# Verifica stato Nginx
+systemctl status nginx
+
+# Test configurazione Nginx
+nginx -t
+
+# Verifica certificati SSL
+certbot certificates
+
+# Rinnovo manuale certificato
+certbot renew --dry-run
+
+# Log Nginx in tempo reale
+tail -f /var/log/nginx/access.log
+tail -f /var/log/nginx/error.log
+```
 
 ## 📞 Supporto
-- **Documentazione Hostinger**: [SSL/TLS Guide](https://support.hostinger.com/en/articles/1583467-how-to-activate-ssl-certificate)
+- **Documentazione Let's Encrypt**: [Certbot Guide](https://certbot.eff.org/)
+- **Documentazione Hostinger VPS**: [VPS SSL Guide](https://support.hostinger.com/en/articles/1583467-how-to-activate-ssl-certificate)
 - **Test SSL**: [SSL Labs Test](https://www.ssllabs.com/ssltest/)
 - **Verifica Configurazione**: `curl -I https://gmgestionale.cloud`
+- **Debug Nginx**: `nginx -t && systemctl status nginx`
 
 ## 🎯 Risultato Finale
 Dopo l'attivazione SSL, la tua applicazione sarà accessibile in modo sicuro su:
