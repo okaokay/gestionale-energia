@@ -206,7 +206,7 @@ export default function ClientiPage() {
 
     const loadAgenti = async () => {
         try {
-            const response = await fetch('http://localhost:3001/api/agenti', {
+            const response = await fetch('/api/agenti', {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`
                 }
@@ -244,7 +244,7 @@ export default function ClientiPage() {
             
             console.log('📤 Invio assegnazione agente:', payload);
             
-            const response = await fetch('http://localhost:3001/api/agenti/assign-cliente', {
+            const response = await fetch('/api/agenti/assign-cliente', {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -767,7 +767,7 @@ export default function ClientiPage() {
             const aziende = validClients.filter(c => c.tipo === 'azienda');
 
             const deletePromises = [];
-            const errors = [];
+            const errors: any[] = [];
 
             // Elimina tutti i clienti privati
             for (const cliente of privati) {
@@ -831,7 +831,7 @@ export default function ClientiPage() {
     const handleRecalculateQuality = async () => {
         try {
             toast.loading('🔄 Ricalcolo qualità dati in corso...');
-            const response = await fetch('http://localhost:3001/api/clienti/recalculate-quality', {
+            const response = await fetch('/api/clienti/recalculate-quality', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -2152,7 +2152,7 @@ export default function ClientiPage() {
                             
                             console.log('📤 Invio assegnazione agente avanzata:', payload);
                             
-                            const response = await fetch('http://localhost:3001/api/agenti/assign-cliente', {
+                            const response = await fetch('/api/agenti/assign-cliente', {
                                 method: 'PUT',
                                 headers: {
                                     'Content-Type': 'application/json',

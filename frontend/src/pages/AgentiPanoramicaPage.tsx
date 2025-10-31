@@ -61,7 +61,7 @@ export default function AgentiPanoramicaPage() {
     const loadAgenteDettaglio = async (agenteId: string) => {
         try {
             setLoading(true);
-            const response = await fetch(`http://localhost:3001/api/agenti/${agenteId}/panoramica`, {
+            const response = await fetch(`/api/agenti/${agenteId}/panoramica`, {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`
                 }

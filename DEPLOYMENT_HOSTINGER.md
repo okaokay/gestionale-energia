@@ -65,7 +65,7 @@ scp -r ./gestionale-energia root@your-vps-ip:/opt/
 ```bash
 # Sul VPS
 cd /opt/gestionale-energia
-cp .env.production .env
+cp .env.hostinger.example .env
 
 # Modifica le variabili d'ambiente
 nano .env
@@ -77,24 +77,23 @@ nano .env
 - `BACKEND_URL`: Il tuo dominio + /api (es: https://yourdomain.com/api)
 - `CORS_ORIGIN`: Il tuo dominio
 
-### 3. Preparazione del database
-```bash
-# Assicurati che il database SQLite esista
-ls -la backend/database/database.sqlite
+### 3. Preparazione del database (SQLite persistente)
+Il container usa un file SQLite persistito nel volume Docker `database_data` montato su `/app`. Alla prima esecuzione viene creato e migrato automaticamente se `INIT_DB=true`.
 
-# Se non esiste, copialo dal tuo ambiente locale
-# scp ./backend/database/database.sqlite root@your-vps-ip:/opt/gestionale-energia/backend/database/
+```bash
+# Verifica volume e file DB dopo il primo avvio
+docker volume ls
+docker-compose exec gestionale-energia ls -la /app | grep gestionale_energia.db
 ```
 
 ### 4. Build e avvio dell'applicazione
+Usa la configurazione pronta per Hostinger (`docker-compose.yml`).
+
 ```bash
-# Build dell'immagine Docker
-docker-compose build
+# Build dell'immagine Docker e avvio
+docker-compose up -d --build
 
-# Avvio dei servizi
-docker-compose up -d
-
-# Verifica che i container siano in esecuzione
+# Verifica che il container sia in esecuzione
 docker-compose ps
 ```
 
@@ -103,8 +102,11 @@ docker-compose ps
 # Controlla i log
 docker-compose logs -f
 
-# Testa l'endpoint di health
-curl http://localhost/health
+# Testa l'endpoint di health del backend
+curl http://localhost:8080/health
+
+# API di test
+curl http://localhost:8080/api/auth/status
 ```
 
 ## Configurazione del Dominio
@@ -125,13 +127,14 @@ certbot --nginx -d yourdomain.com -d www.yourdomain.com
 # Il certificato si rinnoverà automaticamente
 ```
 
-### 3. Aggiorna la configurazione Nginx per HTTPS
-Modifica `nginx.conf` per abilitare la sezione HTTPS e aggiorna il `docker-compose.yml`:
+### 3. Opzione Nginx come reverse proxy (facoltativa)
+La configurazione attuale `docker-compose.yml` espone direttamente la porta `8080` del container applicativo. Se preferisci usare Nginx come reverse proxy e/o servire i file statici, usa `docker-compose.prod.yml` che include il servizio `nginx` e aggiorna `nginx.conf` con il tuo dominio.
 
 ```bash
-# Riavvia i servizi dopo le modifiche
-docker-compose down
-docker-compose up -d
+# Usa compose con nginx
+docker-compose -f docker-compose.prod.yml up -d --build
+
+# Assicurati che il frontend sia buildato in ./frontend/dist se montato da host
 ```
 
 ## Monitoraggio e Manutenzione
@@ -166,9 +169,11 @@ docker-compose down
 # Aggiorna il codice (se usi Git)
 git pull origin main
 
-# Rebuild e riavvio
-docker-compose build
-docker-compose up -d
+# Rebuild e riavvio (compose Hostinger)
+docker-compose up -d --build
+
+# Rebuild e riavvio (con nginx)
+docker-compose -f docker-compose.prod.yml up -d --build
 ```
 
 ### 3. Monitoraggio dei log
@@ -235,8 +240,7 @@ apt install nginx -y
 cp nginx.conf /etc/nginx/sites-available/gestionale-energia
 ln -s /etc/nginx/sites-available/gestionale-energia /etc/nginx/sites-enabled/
 
-# Rimuovi il servizio nginx dal docker-compose.yml
-# e esponi direttamente la porta 3001 dell'app
+# Usa il compose Hostinger senza il servizio nginx e pubblica la porta 8080
 ```
 
 ### 2. Database esterno

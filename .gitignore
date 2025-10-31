@@ -16,6 +16,7 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.hostinger
 frontend/.env
 
 # Database files (keep example)
@@ -75,4 +76,17 @@ final-*.js
 # Backup files
 *-Copia*
 *backup*
+
+# SSL certificates and keys
+ssl/
+*.pem
+*.key
+*.crt
+
+# Production deployment files (keep examples)
+.env.hostinger
+!.env.hostinger.example
+
+# OCR training data (large files)
+*.traineddata
 

@@ -4,6 +4,7 @@
  */
 
 import express from 'express';
+import path from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -84,6 +85,15 @@ app.use('/api/contratti-gestione', contrattiGestioneRoutes);
 app.use('/api/contratti-compilazione', contrattiCompilazioneRoutes);
 app.use('/api/contratti-pdf', contrattiPdfRoutes);
 app.use('/api/unified-import', unifiedImportRoutes); // 🆕 SISTEMA IMPORT UNIFICATO
+
+// Serve static assets del frontend buildato dentro l'immagine Docker
+const frontendDistPath = path.join(process.cwd(), 'frontend', 'dist');
+app.use(express.static(frontendDistPath));
+
+// Fallback SPA: tutte le route non-API servono index.html
+app.get(/^(?!\/api\/).*/, (req, res) => {
+    res.sendFile(path.join(frontendDistPath, 'index.html'));
+});
 
 // 404 handler
 app.use(notFoundHandler);

@@ -7,12 +7,26 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
-      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production}
-      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
-      - DATABASE_PATH=/app/backend/database/database.sqlite
+      - JWT_SECRET=your-super-secure-jwt-secret-key-change-this-in-production-2024
+      - JWT_EXPIRES_IN=7d
+      - DATABASE_PATH=/app/gestionale_energia.db
+      - DATABASE_URL=sqlite:./gestionale_energia.db
+      - FRONTEND_URL=https://gmgestionale.cloud
+      - BACKEND_URL=https://gmgestionale.cloud
+      - CORS_ORIGIN=https://gmgestionale.cloud
+      - SECURE_COOKIES=true
+      - TRUST_PROXY=true
+      - LOG_LEVEL=info
+      # Email configuration (opzionale - configurare se necessario)
+      - BREVO_API_KEY=${BREVO_API_KEY:-}
+      - FROM_EMAIL=${FROM_EMAIL:-noreply@gmgestionale.cloud}
+      - FROM_NAME=${FROM_NAME:-GM Gestionale}
+      # AI configuration (opzionale - configurare se necessario)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     volumes:
       - ./uploads:/app/uploads
       - ./backend/database:/app/backend/database
+      - ./gestionale_energia.db:/app/gestionale_energia.db
     networks:
       - gestionale_network
     healthcheck:
@@ -20,6 +34,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    # Avvio con migrazione automatica basata su DATABASE_PATH
+    command: ["node", "scripts/start-with-migrate.js"]
 
   # Nginx come reverse proxy e server per i file statici
   nginx:

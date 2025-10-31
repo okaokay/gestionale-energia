@@ -40,7 +40,7 @@ export default function AgenteDashboard() {
             const token = localStorage.getItem('token');
             
             // Carica statistiche agente
-            const statsResponse = await fetch('http://localhost:3001/api/agenti/my-stats', {
+            const statsResponse = await fetch('/api/agenti/my-stats', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             
@@ -50,7 +50,7 @@ export default function AgenteDashboard() {
             }
             
             // Carica attività recenti
-            const activityResponse = await fetch('http://localhost:3001/api/agenti/my-activity', {
+            const activityResponse = await fetch('/api/agenti/my-activity', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             
@@ -60,7 +60,7 @@ export default function AgenteDashboard() {
             }
             
             // Carica clienti recenti
-            const clientiResponse = await fetch('http://localhost:3001/api/clienti?limit=5', {
+            const clientiResponse = await fetch('/api/clienti?limit=5', {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             

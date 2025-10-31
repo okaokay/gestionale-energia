@@ -15,19 +15,21 @@ services:
       - TZ=Europe/Rome
       - JWT_SECRET=hostinger-gestionale-energia-jwt-secret-2024
       - JWT_EXPIRES_IN=7d
-      - DATABASE_PATH=/app/gestionale_energia.db
+      - DATABASE_PATH=/app/backend/database/database.sqlite
       - INIT_DB=true
     ports:
       - "8080:3001"
     volumes:
       - uploads_data:/app/uploads
-      - database_data:/app
+      - database_data:/app/backend/database
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
+    # Avvio con migrazione automatica basata su DATABASE_PATH
+    command: ["node", "scripts/start-with-migrate.js"]
 
 volumes:
   uploads_data:

@@ -112,7 +112,7 @@ export default function ContabilitaPage() {
     const loadDashboard = async () => {
         try {
             setLoading(true);
-            const response = await fetch('http://localhost:3001/api/contabilita/dashboard', {
+            const response = await fetch('/api/contabilita/dashboard', {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
             const data = await response.json();
@@ -136,7 +136,7 @@ export default function ContabilitaPage() {
             if (filters.data_da) params.append('data_da', filters.data_da);
             if (filters.data_a) params.append('data_a', filters.data_a);
             
-            const response = await fetch(`http://localhost:3001/api/contabilita/movimenti?${params}`, {
+            const response = await fetch(`/api/contabilita/movimenti?${params}`, {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
             const data = await response.json();
@@ -152,7 +152,7 @@ export default function ContabilitaPage() {
 
     const loadAgenti = async () => {
         try {
-            const response = await fetch('http://localhost:3001/api/agenti', {
+            const response = await fetch('/api/agenti', {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });
             const data = await response.json();
@@ -166,7 +166,7 @@ export default function ContabilitaPage() {
 
     const handleMarcaComePagato = async (movimentoId: number) => {
         try {
-            const response = await fetch(`http://localhost:3001/api/contabilita/movimenti/${movimentoId}/paga`, {
+            const response = await fetch(`/api/contabilita/movimenti/${movimentoId}/paga`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -193,7 +193,7 @@ export default function ContabilitaPage() {
 
     const handleAddMovimento = async () => {
         try {
-            const response = await fetch('http://localhost:3001/api/contabilita/movimenti', {
+            const response = await fetch('/api/contabilita/movimenti', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -231,7 +231,7 @@ export default function ContabilitaPage() {
         if (!confirm('Sei sicuro di voler eliminare questo movimento?')) return;
         
         try {
-            const response = await fetch(`http://localhost:3001/api/contabilita/movimenti/${id}`, {
+            const response = await fetch(`/api/contabilita/movimenti/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
             });

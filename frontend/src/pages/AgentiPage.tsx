@@ -68,7 +68,7 @@ export default function AgentiPage() {
     const loadAgenti = async () => {
         try {
             setLoading(true);
-            const response = await fetch('http://localhost:3001/api/agenti', {
+            const response = await fetch('/api/agenti', {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`
                 }
@@ -94,7 +94,7 @@ export default function AgentiPage() {
         }
 
         try {
-            const response = await fetch('http://localhost:3001/api/agenti/quick-create', {
+            const response = await fetch('/api/agenti/quick-create', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -123,7 +123,7 @@ export default function AgentiPage() {
         if (!selectedAgente) return;
 
         try {
-            const response = await fetch(`http://localhost:3001/api/agenti/${selectedAgente.id}`, {
+            const response = await fetch(`/api/agenti/${selectedAgente.id}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -153,7 +153,7 @@ export default function AgentiPage() {
         if (!confirm('Sei sicuro di voler eliminare questo agente?')) return;
         
         try {
-            const response = await fetch(`http://localhost:3001/api/agenti/${id}`, {
+            const response = await fetch(`/api/agenti/${id}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`
@@ -174,7 +174,7 @@ export default function AgentiPage() {
 
     const handleToggleActive = async (id: number, currentStatus: boolean) => {
         try {
-            const response = await fetch(`http://localhost:3001/api/agenti/${id}/toggle-active`, {
+            const response = await fetch(`/api/agenti/${id}/toggle-active`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

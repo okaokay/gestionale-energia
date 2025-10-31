@@ -39,7 +39,7 @@ export default function CreateAgentModal({ isOpen, onClose, onSuccess }: CreateA
         try {
             setLoading(true);
             
-            const response = await fetch('http://localhost:3001/api/agenti/quick-create', {
+            const response = await fetch('/api/agenti/quick-create', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
