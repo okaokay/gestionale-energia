@@ -16,6 +16,17 @@ Prerequisiti:
 - Il dominio `gmgestionale.cloud` (e `www.gmgestionale.cloud`) deve puntare all'IP del VPS (record A)
 - Le porte `80` e `443` devono essere aperte verso il VPS
 
+#### Versione Semplificata (Consigliata per Docker Manager)
+
+Passi:
+1) Hostinger → Docker → Docker Manager → Create project → From compose file
+2) Incolla il link raw del compose semplificato:
+   - `https://raw.githubusercontent.com/okaokay/gestionale-energia/main/docker-compose.vps-simple.yml`
+3) Imposta Project name: `gestionale-energia`
+4) Avvia il deployment
+
+#### Versione Completa (se la semplificata non funziona)
+
 Passi:
 1) Hostinger → Docker → Docker Manager → Create project → From compose file
 2) Incolla il link raw del compose Traefik:
@@ -23,9 +34,42 @@ Passi:
 3) Imposta Project name: `gestionale-energia`
 4) Avvia il deployment
 
+### Configurazione Variabili d'Ambiente
+
+**IMPORTANTE**: Prima del deployment, configura le variabili d'ambiente nel Docker Manager:
+
+```bash
+# Database (se usi MySQL esterno)
+DB_HOST=localhost
+DB_USER=root
+DB_PASSWORD=your_secure_password
+DB_NAME=gestionale_energia
+
+# JWT Secret - CAMBIA QUESTO!
+JWT_SECRET=your-super-secret-jwt-key-change-this
+
+# Email (opzionale)
+BREVO_API_KEY=your_brevo_api_key
+EMAIL_FROM=noreply@gmgestionale.cloud
+```
+
+### Differenze tra le Versioni
+
+**Versione Semplificata (`docker-compose.vps-simple.yml`):**
+- ✅ Non usa mount di file locali (compatibile con Docker Manager)
+- ✅ App serve sia frontend che backend
+- ✅ Configurazione più semplice
+- ✅ Meno problemi di permessi
+
+**Versione Completa (`docker-compose.vps-traefik.yml`):**
+- ⚠️ Usa Nginx separato per servire il frontend
+- ⚠️ Richiede mount di file locali (può causare problemi)
+- ✅ Separazione più netta tra frontend e backend
+
 Cosa succede:
 - `traefik` espone `80/443`, verifica il dominio e genera i certificati SSL in automatico
-- `traefik` instrada le richieste verso `nginx` nel container, che fa da reverse proxy all’app (`app:3001`)
+- `traefik` instrada le richieste verso l'app che serve sia frontend che backend
+- **Database SQLite** viene inizializzato automaticamente (se non usi MySQL)
 
 Verifica:
 - Dopo 30–120 secondi apri `https://gmgestionale.cloud` (lucchetto SSL attivo)
