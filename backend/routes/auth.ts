@@ -46,8 +46,12 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
         const user = result.rows[0] as any;
         console.log('✅ Utente trovato:', user.email);
         
-        // Verifica che l'utente sia attivo
-        if (!user.attivo) {
+        // Verifica che l'utente sia attivo (supporta colonne 'attivo' o 'is_active')
+        const rawActiveValues = [user.attivo, (user as any).is_active];
+        const hasActiveFlag = rawActiveValues.some(v => typeof v !== 'undefined' && v !== null);
+        const isActive = rawActiveValues.some(v => v === true || v === 1 || v === '1');
+
+        if (hasActiveFlag && !isActive) {
             return res.status(401).json({
                 success: false,
                 message: 'Utente disattivato'
