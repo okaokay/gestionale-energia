@@ -112,14 +112,16 @@ async function findUserIdByEmail(email?: string): Promise<string | null> {
 }
 
 async function findClientePrivatoId(record: Record<string, string>): Promise<string | null> {
-    const cf = record.codice_fiscale || record.cliente_codice_fiscale;
-    const email = record.email_principale || record.cliente_email;
+    const cfRaw = record.codice_fiscale || record.cliente_codice_fiscale;
+    const emailRaw = record.email_principale || record.cliente_email;
+    const cf = cfRaw ? cfRaw.trim().toUpperCase() : null;
+    const email = emailRaw ? emailRaw.trim().toLowerCase() : null;
     if (cf) {
-        const res = await pool.query<{ id: number | string }>('SELECT id FROM clienti_privati WHERE codice_fiscale = $1 LIMIT 1', [cf]);
+        const res = await pool.query<{ id: number | string }>('SELECT id FROM clienti_privati WHERE UPPER(TRIM(codice_fiscale)) = $1 LIMIT 1', [cf]);
         if (res.rows[0]?.id) return String(res.rows[0].id);
     }
     if (email) {
-        const res = await pool.query<{ id: number | string }>('SELECT id FROM clienti_privati WHERE email_principale = $1 LIMIT 1', [email]);
+        const res = await pool.query<{ id: number | string }>('SELECT id FROM clienti_privati WHERE LOWER(TRIM(email_principale)) = $1 LIMIT 1', [email]);
         if (res.rows[0]?.id) return String(res.rows[0].id);
     }
     return null;
@@ -130,22 +132,24 @@ async function insertClientePrivato(record: Record<string, string>, createdBy: s
     // Evitiamo UUID qui e usiamo last_insert_rowid() per ottenere l'ID appena inserito.
     if (dryRun) return randomUUID();
 
-    const nome = record.nome || record.cliente_nome || null;
-    const cognome = record.cognome || record.cliente_cognome || null;
-    const cf = record.codice_fiscale || record.cliente_codice_fiscale || null;
+    const nome = (record.nome || record.cliente_nome || '').trim() || null;
+    const cognome = (record.cognome || record.cliente_cognome || '').trim() || null;
+    const cfVal = record.codice_fiscale || record.cliente_codice_fiscale || null;
+    const cf = cfVal ? String(cfVal).trim().toUpperCase() : null;
     const data_nascita = record.data_nascita || record.cliente_data_nascita || null;
-    const email = record.email_principale || record.cliente_email || null;
-    const tel = record.telefono_mobile || record.cliente_telefono || null;
-    const via = record.via_residenza || record.cliente_indirizzo || null;
+    const emailVal = record.email_principale || record.cliente_email || null;
+    const email = emailVal ? String(emailVal).trim().toLowerCase() : null;
+    const tel = (record.telefono_mobile || record.cliente_telefono || '').trim() || null;
+    const via = (record.via_residenza || record.cliente_indirizzo || '').trim() || null;
     const civico = record.civico_residenza || null;
-    const cap = record.cap_residenza || record.cliente_cap || null;
-    const citta = record.citta_residenza || record.cliente_citta || null;
-    const provincia = record.provincia_residenza || record.cliente_provincia || null;
+    const cap = (record.cap_residenza || record.cliente_cap || '').trim() || null;
+    const citta = (record.citta_residenza || record.cliente_citta || '').trim() || null;
+    const provincia = (record.provincia_residenza || record.cliente_provincia || '').trim() || null;
     const tipo_doc = record.tipo_documento || record.cliente_documento_tipo || null;
     const num_doc = record.numero_documento || record.cliente_documento_numero || null;
     const ente = record.ente_rilascio || record.cliente_documento_rilasciato_da || null;
     const scadenza_doc = record.data_scadenza_documento || record.cliente_documento_data_scadenza || null;
-    const iban = record.iban || null;
+    const iban = (record.iban || '').trim() || null;
 
     // Rileva colonne disponibili per compatibilità
     const colsAvailable = await getTableColumns('clienti_privati');
@@ -205,6 +209,116 @@ async function insertClientePrivato(record: Record<string, string>, createdBy: s
     const sel = await pool.query<{ id: number }>(`SELECT last_insert_rowid() as id`);
     const id = sel.rows?.[0]?.id;
     return String(id);
+}
+
+// Effettua UPSERT robusto su clienti_privati usando codice_fiscale o email_principale come chiave
+async function upsertClientePrivato(record: Record<string, string>, createdBy: string | null, assignedAgentId: string | null, dryRun: boolean): Promise<{ id: string; action: 'inserted' | 'updated' | 'would_insert' | 'would_update' }> {
+    if (dryRun) {
+        // Simula identificazione/azione
+        const existing = await findClientePrivatoId(record);
+        return { id: existing || randomUUID(), action: existing ? 'would_update' : 'would_insert' };
+    }
+
+    // Riusiamo la costruzione dei campi dell'INSERT, ma per l'UPDATE aggiorniamo solo i non-null
+    const colsAvailable = await getTableColumns('clienti_privati');
+    const nome = (record.nome || record.cliente_nome || '').trim() || null;
+    const cognome = (record.cognome || record.cliente_cognome || '').trim() || null;
+    const cfVal = record.codice_fiscale || record.cliente_codice_fiscale || null;
+    const cf = cfVal ? String(cfVal).trim().toUpperCase() : null;
+    const data_nascita = record.data_nascita || record.cliente_data_nascita || null;
+    const emailVal = record.email_principale || record.cliente_email || null;
+    const email = emailVal ? String(emailVal).trim().toLowerCase() : null;
+    const tel = (record.telefono_mobile || record.cliente_telefono || '').trim() || null;
+    const via = (record.via_residenza || record.cliente_indirizzo || '').trim() || null;
+    const civico = record.civico_residenza || null;
+    const cap = (record.cap_residenza || record.cliente_cap || '').trim() || null;
+    const citta = (record.citta_residenza || record.cliente_citta || '').trim() || null;
+    const provincia = (record.provincia_residenza || record.cliente_provincia || '').trim() || null;
+    const tipo_doc = record.tipo_documento || record.cliente_documento_tipo || null;
+    const num_doc = record.numero_documento || record.cliente_documento_numero || null;
+    const ente = record.ente_rilascio || record.cliente_documento_rilasciato_da || null;
+    const scadenza_doc = record.data_scadenza_documento || record.cliente_documento_data_scadenza || null;
+    const iban = (record.iban || '').trim() || null;
+
+    const allFieldMap: Record<string, any> = {
+        nome,
+        cognome,
+        codice_fiscale: cf,
+        data_nascita,
+        email_principale: email,
+        telefono_mobile: tel,
+        via_residenza: via,
+        civico_residenza: civico,
+        cap_residenza: cap,
+        citta_residenza: citta,
+        provincia_residenza: provincia,
+        tipo_documento: tipo_doc,
+        numero_documento: num_doc,
+        ente_rilascio: ente,
+        data_scadenza_documento: scadenza_doc,
+        iban: iban,
+        created_by: createdBy || null
+    };
+    if (assignedAgentId) {
+        allFieldMap['assigned_agent_id'] = assignedAgentId;
+    }
+    // created_at: se presente, impostiamo ora solo per nuovi inserimenti via DEFAULT
+
+    // Costruisci colonne/valori presenti nel DB
+    const insertCols: string[] = [];
+    const insertVals: any[] = [];
+    for (const [col, val] of Object.entries(allFieldMap)) {
+        if (colsAvailable.includes(col)) {
+            insertCols.push(col);
+            insertVals.push(val);
+        }
+    }
+    if (insertCols.length === 0) {
+        throw new Error('Schema clienti_privati non compatibile: nessuna colonna disponibile per l\'UPSERT');
+    }
+
+    const placeholders = insertVals.map((_, i) => `$${i + 1}`).join(', ');
+
+    // Prepara SET per aggiornamento: aggiorna solo campi non null presenti
+    const updateSets: string[] = [];
+    const updateVals: any[] = [];
+    for (const [col, val] of Object.entries(allFieldMap)) {
+        if (colsAvailable.includes(col) && val !== null && col !== 'codice_fiscale') {
+            updateSets.push(`${col} = $${insertVals.length + updateVals.length + 1}`);
+            updateVals.push(val);
+        }
+    }
+
+    // Determina chiave di conflitto: preferisci CF, altrimenti email
+    const conflictCol = cf ? 'codice_fiscale' : (email ? 'email_principale' : null);
+    if (!conflictCol) {
+        // Se non abbiamo chiavi uniche, facciamo semplice INSERT
+        await pool.query(`
+            INSERT INTO clienti_privati (${insertCols.join(', ')})
+            VALUES (${placeholders})
+        `, insertVals);
+        const sel = await pool.query<{ id: number }>(`SELECT last_insert_rowid() as id`);
+        return { id: String(sel.rows?.[0]?.id), action: 'inserted' };
+    }
+
+    // Esegui UPSERT SQLite
+    const sql = `
+        INSERT INTO clienti_privati (${insertCols.join(', ')})
+        VALUES (${placeholders})
+        ON CONFLICT(${conflictCol}) DO UPDATE SET ${updateSets.join(', ')}
+    `;
+    await pool.query(sql, [...insertVals, ...updateVals]);
+
+    // Recupera id
+    let id: string | null = null;
+    if (conflictCol === 'codice_fiscale' && cf) {
+        const res = await pool.query<{ id: number | string }>('SELECT id FROM clienti_privati WHERE UPPER(TRIM(codice_fiscale)) = $1 LIMIT 1', [cf]);
+        id = res.rows?.[0]?.id ? String(res.rows[0].id) : null;
+    } else if (conflictCol === 'email_principale' && email) {
+        const res = await pool.query<{ id: number | string }>('SELECT id FROM clienti_privati WHERE LOWER(TRIM(email_principale)) = $1 LIMIT 1', [email]);
+        id = res.rows?.[0]?.id ? String(res.rows[0].id) : null;
+    }
+    return { id: id || String((await pool.query<{ id: number }>(`SELECT last_insert_rowid() as id`)).rows?.[0]?.id), action: 'updated' };
 }
 
 async function insertContrattoLuce(record: Record<string, string>, clienteId: string, createdBy: string | null, dryRun: boolean): Promise<string> {
@@ -564,11 +678,26 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
                 // Inserimento per tipo
                 if (tipo === 'cliente_privato') {
-                    const existingId = await findClientePrivatoId(rec);
-                    let clienteId = existingId || await insertClientePrivato(rec, createdBy || assignedUserId, assignedUserId, !!options.dryRun);
-                    if (!existingId) activeImports[importId].result.inserted.clienti_privati++;
+                    const modeRaw = (rec as any).modalita_import || '';
+                    const mode = String(modeRaw).toLowerCase();
+                    const useUpsert = mode === 'update' || mode === 'upsert' || true; // default: usa upsert sempre per evitare duplicati
+
+                    let clienteId: string;
+                    if (useUpsert) {
+                        const up = await upsertClientePrivato(rec, createdBy || assignedUserId, assignedUserId, !!options.dryRun);
+                        clienteId = up.id;
+                        if (up.action === 'inserted' || up.action === 'would_insert') {
+                            activeImports[importId].result.inserted.clienti_privati++;
+                        } else {
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: cliente_privato ${up.id} aggiornato (${up.action})`);
+                        }
+                    } else {
+                        const existingId = await findClientePrivatoId(rec);
+                        clienteId = existingId || await insertClientePrivato(rec, createdBy || assignedUserId, assignedUserId, !!options.dryRun);
+                        if (!existingId) activeImports[importId].result.inserted.clienti_privati++;
+                    }
                     // Se il cliente esiste già, aggiorna l'assegnazione agente se disponibile
-                    if (existingId && assignedUserId && !options.dryRun) {
+                    if (assignedUserId && !options.dryRun) {
                         try {
                             const cols = await getTableColumns('clienti_privati');
                             if (cols.includes('assigned_agent_id')) {
