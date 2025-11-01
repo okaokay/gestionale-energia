@@ -193,6 +193,161 @@ function patchClientColumnsIfNeeded() {
   }
 }
 
+// Ricostruisce le tabelle clienti_* rimuovendo vincoli NOT NULL per supportare import incompleti
+function relaxClientNullConstraintsIfNeeded() {
+  try {
+    const db = new Database(dbPath);
+
+    // Utilità: controlla se una tabella ha vincoli NOT NULL su campi che vogliamo opzionali
+    const needRelax = (table, optionalFields) => {
+      try {
+        const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+        if (!cols || cols.length === 0) return false; // tabella non esiste
+        const byName = Object.fromEntries(cols.map(c => [c.name, c]));
+        return optionalFields.some(f => byName[f] && Number(byName[f].notnull) === 1);
+      } catch (e) {
+        return false;
+      }
+    };
+
+    // Ricostruzione generica: crea nuova tabella con schema target, copia dati comuni, rimpiazza
+    const rebuildTable = (table, createSql, targetColumns) => {
+      // Determina colonne esistenti
+      const existing = db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
+      const common = targetColumns.filter(c => existing.includes(c));
+      db.exec(`BEGIN TRANSACTION;`);
+      try {
+        db.exec(`CREATE TABLE ${table}_new (${createSql});`);
+        if (common.length > 0) {
+          const colList = common.join(', ');
+          db.exec(`INSERT INTO ${table}_new (${colList}) SELECT ${colList} FROM ${table};`);
+        }
+        db.exec(`DROP TABLE ${table};`);
+        db.exec(`ALTER TABLE ${table}_new RENAME TO ${table};`);
+        db.exec(`COMMIT;`);
+        console.log(`✅ Tabella ${table} ricostruita con campi nullable`);
+      } catch (e) {
+        db.exec(`ROLLBACK;`);
+        console.log(`❌ Errore ricostruzione ${table}:`, e.message || e);
+      }
+    };
+
+    // clienti_privati: schema target completamente nullable (allineato a migrate-clienti-nullable.ts)
+    const privatiOptional = [
+      'nome','cognome','codice_fiscale','data_nascita','email_principale','telefono_mobile',
+      'via_residenza','citta_residenza'
+    ];
+    if (needRelax('clienti_privati', privatiOptional)) {
+      console.log('🔨 Ricostruzione clienti_privati per rimuovere vincoli NOT NULL...');
+      const privatiCreateColumns = [
+        'id TEXT PRIMARY KEY',
+        'nome TEXT',
+        'cognome TEXT',
+        'codice_fiscale TEXT',
+        'data_nascita TEXT',
+        'email_principale TEXT',
+        'email_secondaria TEXT',
+        'telefono_fisso TEXT',
+        'telefono_mobile TEXT',
+        'pec TEXT',
+        'via_residenza TEXT',
+        'civico_residenza TEXT',
+        'cap_residenza TEXT',
+        'citta_residenza TEXT',
+        'provincia_residenza TEXT',
+        'via_fornitura TEXT',
+        'civico_fornitura TEXT',
+        'cap_fornitura TEXT',
+        'citta_fornitura TEXT',
+        'provincia_fornitura TEXT',
+        'tipo_documento TEXT',
+        'numero_documento TEXT',
+        'ente_rilascio TEXT',
+        'data_scadenza_documento TEXT',
+        'iban TEXT',
+        'preferenza_email INTEGER DEFAULT 1',
+        'preferenza_sms INTEGER DEFAULT 1',
+        'preferenza_telefono INTEGER DEFAULT 1',
+        'note TEXT',
+        'consenso_privacy INTEGER DEFAULT 0',
+        'consenso_marketing INTEGER DEFAULT 0',
+        'data_consenso TEXT',
+        'newsletter_attiva INTEGER DEFAULT 1',
+        'unsubscribe_token TEXT',
+        'created_at TEXT DEFAULT CURRENT_TIMESTAMP',
+        'updated_at TEXT DEFAULT CURRENT_TIMESTAMP',
+        'created_by TEXT'
+      ];
+      rebuildTable('clienti_privati', privatiCreateColumns.join(', '), privatiCreateColumns.map(c => c.split(' ')[0]));
+      // Indici utili
+      try {
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_privati_codice_fiscale ON clienti_privati(codice_fiscale);`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_privati_email ON clienti_privati(email_principale);`);
+      } catch {}
+    } else {
+      console.log('✅ Schema clienti_privati già privo di NOT NULL vincolanti');
+    }
+
+    // clienti_aziende: schema target completamente nullable
+    const aziendeOptional = [
+      'ragione_sociale','partita_iva','codice_ateco','email_referente','telefono_referente','citta_sede_legale'
+    ];
+    if (needRelax('clienti_aziende', aziendeOptional)) {
+      console.log('🔨 Ricostruzione clienti_aziende per rimuovere vincoli NOT NULL...');
+      const aziendeCreateColumns = [
+        'id TEXT PRIMARY KEY',
+        'ragione_sociale TEXT',
+        'partita_iva TEXT',
+        'codice_fiscale TEXT',
+        'codice_ateco TEXT',
+        'descrizione_ateco TEXT',
+        'pec_aziendale TEXT',
+        'via_sede_legale TEXT',
+        'civico_sede_legale TEXT',
+        'cap_sede_legale TEXT',
+        'citta_sede_legale TEXT',
+        'provincia_sede_legale TEXT',
+        'via_sede_operativa TEXT',
+        'civico_sede_operativa TEXT',
+        'cap_sede_operativa TEXT',
+        'citta_sede_operativa TEXT',
+        'provincia_sede_operativa TEXT',
+        'nome_referente TEXT',
+        'cognome_referente TEXT',
+        'ruolo_referente TEXT',
+        'email_referente TEXT',
+        'telefono_referente TEXT',
+        'dimensione_azienda TEXT',
+        'settore_merceologico TEXT',
+        'fatturato_annuo REAL',
+        'iban_aziendale TEXT',
+        'codice_sdi TEXT',
+        'note TEXT',
+        'consenso_privacy INTEGER DEFAULT 0',
+        'consenso_marketing INTEGER DEFAULT 0',
+        'data_consenso TEXT',
+        'newsletter_attiva INTEGER DEFAULT 1',
+        'unsubscribe_token TEXT',
+        'created_at TEXT DEFAULT CURRENT_TIMESTAMP',
+        'updated_at TEXT DEFAULT CURRENT_TIMESTAMP',
+        'created_by TEXT'
+      ];
+      rebuildTable('clienti_aziende', aziendeCreateColumns.join(', '), aziendeCreateColumns.map(c => c.split(' ')[0]));
+      try {
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_aziende_partita_iva ON clienti_aziende(partita_iva);`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_aziende_email ON clienti_aziende(email_referente);`);
+      } catch {}
+    } else {
+      console.log('✅ Schema clienti_aziende già privo di NOT NULL vincolanti');
+    }
+
+    db.close();
+  } catch (err) {
+    console.log('❌ Errore relax vincoli clienti:', err);
+    // Non bloccare l'avvio del server
+  }
+}
+
 function startServer() {
   const serverScript = path.join(process.cwd(), 'dist', 'backend', 'server.js');
   if (!fs.existsSync(serverScript)) {
@@ -205,6 +360,8 @@ function startServer() {
 }
 
 ensureDatabaseMigrated();
+// Ricrea tabelle clienti con campi nullable se sono presenti vincoli NOT NULL
+relaxClientNullConstraintsIfNeeded();
 // Applica patch schema per garantire colonne richieste dalle query runtime
 patchSchemaIfNeeded();
 // Applica patch clienti per garantire colonne estese

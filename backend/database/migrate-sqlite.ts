@@ -55,34 +55,36 @@ async function runMigration() {
         console.log('   Email: admin@gestionale.it');
         console.log('   Password: Admin123!');
         
-        // Tabelle clienti
+        // Tabelle clienti (campi opzionali per supportare import parziali)
         db.exec(`
             CREATE TABLE IF NOT EXISTS clienti_privati (
                 id TEXT PRIMARY KEY,
-                nome TEXT NOT NULL,
-                cognome TEXT NOT NULL,
-                codice_fiscale TEXT UNIQUE NOT NULL,
-                data_nascita TEXT NOT NULL,
-                email_principale TEXT NOT NULL,
-                telefono_mobile TEXT NOT NULL,
-                via_residenza TEXT NOT NULL,
-                citta_residenza TEXT NOT NULL,
+                nome TEXT,
+                cognome TEXT,
+                codice_fiscale TEXT UNIQUE,
+                data_nascita TEXT,
+                email_principale TEXT,
+                telefono_mobile TEXT,
+                via_residenza TEXT,
+                citta_residenza TEXT,
                 consenso_privacy INTEGER DEFAULT 0,
                 consenso_marketing INTEGER DEFAULT 0,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
-            
+
             CREATE TABLE IF NOT EXISTS clienti_aziende (
                 id TEXT PRIMARY KEY,
-                ragione_sociale TEXT NOT NULL,
-                partita_iva TEXT UNIQUE NOT NULL,
-                codice_ateco TEXT NOT NULL,
-                email_referente TEXT NOT NULL,
-                telefono_referente TEXT NOT NULL,
-                citta_sede_legale TEXT NOT NULL,
+                ragione_sociale TEXT,
+                partita_iva TEXT UNIQUE,
+                codice_ateco TEXT,
+                email_referente TEXT,
+                telefono_referente TEXT,
+                citta_sede_legale TEXT,
                 consenso_privacy INTEGER DEFAULT 0,
                 consenso_marketing INTEGER DEFAULT 0,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
         `);
         
