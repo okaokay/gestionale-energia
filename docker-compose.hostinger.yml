@@ -3,8 +3,6 @@ services:
     build: .
     container_name: gestionale_energia_hostinger
     restart: unless-stopped
-    ports:
-      - "80:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001
@@ -15,7 +13,7 @@ services:
       - FRONTEND_URL=${FRONTEND_URL:-https://gmgestionale.cloud}
       - BACKEND_URL=${BACKEND_URL:-https://gmgestionale.cloud}
       - CORS_ORIGIN=${CORS_ORIGIN:-https://gmgestionale.cloud}
-      - SECURE_COOKIES=false
+      - SECURE_COOKIES=true
       - TRUST_PROXY=true
       - LOG_LEVEL=info
       # Email configuration (opzionale)
@@ -24,6 +22,11 @@ services:
       - FROM_NAME=${FROM_NAME:-Gestionale Energia}
       # AI configuration (opzionale)
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # Nginx Proxy (Let's Encrypt)
+      - VIRTUAL_HOST=gmgestionale.cloud
+      - VIRTUAL_PORT=3001
+      - LETSENCRYPT_HOST=gmgestionale.cloud
+      - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-admin@gmgestionale.cloud}
     volumes:
       - db_data:/data
       - uploads_data:/app/uploads
@@ -35,6 +38,37 @@ services:
       retries: 3
     command: ["node", "scripts/start-with-migrate.js"]
 
+  nginx:
+    image: nginxproxy/nginx-proxy:alpine
+    container_name: nginx_proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DEFAULT_HOST=gmgestionale.cloud
+      - ENABLE_IPV6=0
+    volumes:
+      - nginx_certs:/etc/nginx/certs
+      - nginx_vhost:/etc/nginx/vhost.d
+      - nginx_html:/usr/share/nginx/html
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+
+  acme:
+    image: nginxproxy/acme-companion
+    container_name: nginx_proxy_acme
+    restart: unless-stopped
+    depends_on:
+      - nginx
+    environment:
+      - DEFAULT_EMAIL=${LETSENCRYPT_EMAIL:-admin@gmgestionale.cloud}
+      - NGINX_PROXY_CONTAINER=nginx_proxy
+    volumes:
+      - nginx_certs:/etc/nginx/certs
+      - nginx_vhost:/etc/nginx/vhost.d
+      - nginx_html:/usr/share/nginx/html
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
 networks:
   default:
     driver: bridge
@@ -42,3 +76,6 @@ networks:
 volumes:
   db_data:
   uploads_data:
+  nginx_certs:
+  nginx_vhost:
+  nginx_html:
