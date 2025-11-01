@@ -25,10 +25,14 @@ function restoreSeedDataIfNeeded() {
 
     const dbExists = fs.existsSync(dbPath);
     const dbSize = dbExists ? fs.statSync(dbPath).size : 0;
+    const forceSeed = String(process.env.FORCE_SEED_RESTORE || '').toLowerCase() === 'true';
 
     // Se DB non esiste o è vuoto e abbiamo un seed, copia
-    if ((!dbExists || dbSize === 0) && fs.existsSync(seedDbPath)) {
+    if ((forceSeed || !dbExists || dbSize === 0) && fs.existsSync(seedDbPath)) {
       try {
+        if (forceSeed && dbExists) {
+          console.log('⚠️  FORCE_SEED_RESTORE abilitato: sovrascrivo DB esistente con seed');
+        }
         fs.copyFileSync(seedDbPath, dbPath);
         console.log('🌱 Seed DB ripristinato in', dbPath);
       } catch (e) {
@@ -50,8 +54,11 @@ function restoreSeedDataIfNeeded() {
       }
     })();
 
-    if (uploadsEmpty && fs.existsSync(seedUploadsPath)) {
+    if ((forceSeed || uploadsEmpty) && fs.existsSync(seedUploadsPath)) {
       try {
+        if (forceSeed && !uploadsEmpty) {
+          console.log('⚠️  FORCE_SEED_RESTORE abilitato: sovrascrivo uploads con seed');
+        }
         // fs.cpSync disponibile su Node >=16
         if (fs.cpSync) {
           fs.cpSync(seedUploadsPath, uploadsTarget, { recursive: true });
