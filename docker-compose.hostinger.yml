@@ -10,9 +10,9 @@ services:
       - JWT_EXPIRES_IN=7d
       - DATABASE_PATH=/data/gestionale_energia.db
       - DATABASE_URL=sqlite:/data/gestionale_energia.db
-      - FRONTEND_URL=${FRONTEND_URL:-https://gmgestionale.cloud}
-      - BACKEND_URL=${BACKEND_URL:-https://gmgestionale.cloud}
-      - CORS_ORIGIN=${CORS_ORIGIN:-https://gmgestionale.cloud}
+      - FRONTEND_URL=https://gmgestionale.cloud
+      - BACKEND_URL=https://gmgestionale.cloud
+      - CORS_ORIGIN=https://gmgestionale.cloud
       - SECURE_COOKIES=true
       - TRUST_PROXY=true
       - LOG_LEVEL=info
@@ -26,7 +26,7 @@ services:
       - VIRTUAL_HOST=gmgestionale.cloud
       - VIRTUAL_PORT=3001
       - LETSENCRYPT_HOST=gmgestionale.cloud
-      - LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL:-admin@gmgestionale.cloud}
+      - LETSENCRYPT_EMAIL=admin@gmgestionale.cloud
     volumes:
       - db_data:/data
       - uploads_data:/app/uploads
@@ -61,7 +61,7 @@ services:
     depends_on:
       - nginx
     environment:
-      - DEFAULT_EMAIL=${LETSENCRYPT_EMAIL:-admin@gmgestionale.cloud}
+      - DEFAULT_EMAIL=admin@gmgestionale.cloud
       - NGINX_PROXY_CONTAINER=nginx_proxy
     volumes:
       - nginx_certs:/etc/nginx/certs
