@@ -1,12 +1,10 @@
 # Docker Compose per Hostinger (Componi da URL)
-# Questo file clona il tuo compose locale ma usa `image:`
-# Sostituisci la riga `image:` con la tua immagine pubblicata (Docker Hub/GHCR).
-version: '3.8'
+# Questo file clona il tuo compose locale ma usa `image:` già puntata a Docker Hub.
+# Nota: il campo `version` è obsoleto in Compose v2, rimosso per evitare warning.
 
 services:
   gestionale-energia:
-    # Esempio: docker.io/<utente>/gestionale-energia:hostinger-v1
-    image: docker.io/REPLACE_ME/gestionale-energia:REPLACE_TAG
+    image: docker.io/okaokay/gestionale-energia:hostinger-v1
     pull_policy: always
     container_name: gestionale-energia-hostinger
     restart: unless-stopped
