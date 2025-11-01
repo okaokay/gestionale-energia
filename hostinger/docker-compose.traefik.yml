@@ -73,8 +73,33 @@ services:
         condition: service_healthy
     restart: unless-stopped
     # Nessuna pubblicazione porte (Traefik espone 80/443)
-    command: >
-      sh -lc 'cat > /etc/nginx/conf.d/default.conf <<"EOF"\nserver {\n  listen 80;\n  server_name gmgestionale.cloud www.gmgestionale.cloud srv1072066.hstgr.cloud;\n  client_max_body_size 50M;\n  location / {\n    proxy_pass http://gestionale-energia:3001;\n    proxy_http_version 1.1;\n    proxy_set_header Upgrade $$http_upgrade;\n    proxy_set_header Connection "upgrade";\n    proxy_set_header Host $$host;\n    proxy_set_header X-Real-IP $$remote_addr;\n    proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;\n    proxy_set_header X-Forwarded-Proto $$scheme;\n    proxy_read_timeout 300;\n  }\n  location /health {\n    proxy_pass http://gestionale-energia:3001/health;\n    access_log off;\n  }\n  add_header X-Content-Type-Options nosniff;\n  add_header X-Frame-Options SAMEORIGIN;\n  add_header X-XSS-Protection "1; mode=block";\n}\nEOF\n && nginx -g "daemon off;"'
+    command: |
+      sh -lc 'cat > /etc/nginx/conf.d/default.conf << "EOF"
+      server {
+        listen 80;
+        server_name gmgestionale.cloud www.gmgestionale.cloud srv1072066.hstgr.cloud;
+        client_max_body_size 50M;
+        location / {
+          proxy_pass http://gestionale-energia:3001;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade $$http_upgrade;
+          proxy_set_header Connection "upgrade";
+          proxy_set_header Host $$host;
+          proxy_set_header X-Real-IP $$remote_addr;
+          proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $$scheme;
+          proxy_read_timeout 300;
+        }
+        location /health {
+          proxy_pass http://gestionale-energia:3001/health;
+          access_log off;
+        }
+        add_header X-Content-Type-Options nosniff;
+        add_header X-Frame-Options SAMEORIGIN;
+        add_header X-XSS-Protection "1; mode=block";
+      }
+      EOF
+      nginx -g "daemon off;"'
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.gmgestionale.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
