@@ -1,81 +1,39 @@
+# Docker Compose per Hostinger (Componi da URL)
+# Questo file clona il tuo compose locale ma usa `image:`
+# Sostituisci la riga `image:` con la tua immagine pubblicata (Docker Hub/GHCR).
+version: '3.8'
+
 services:
-  app:
-    build: .
-    container_name: gestionale_energia_hostinger
+  gestionale-energia:
+    # Esempio: docker.io/<utente>/gestionale-energia:hostinger-v1
+    image: docker.io/REPLACE_ME/gestionale-energia:REPLACE_TAG
+    pull_policy: always
+    container_name: gestionale-energia-hostinger
     restart: unless-stopped
     environment:
       - NODE_ENV=production
       - PORT=3001
-      - JWT_SECRET=change-this-in-production
+      - TZ=Europe/Rome
+      - JWT_SECRET=hostinger-gestionale-energia-jwt-secret-2024
       - JWT_EXPIRES_IN=7d
-      - DATABASE_PATH=/data/gestionale_energia.db
-      - DATABASE_URL=sqlite:/data/gestionale_energia.db
-      - FRONTEND_URL=https://gmgestionale.cloud
-      - BACKEND_URL=https://gmgestionale.cloud
-      - CORS_ORIGIN=https://gmgestionale.cloud
-      - SECURE_COOKIES=true
-      - TRUST_PROXY=true
-      - LOG_LEVEL=info
-      # Email configuration (opzionale)
-      - BREVO_API_KEY=${BREVO_API_KEY:-}
-      - FROM_EMAIL=${FROM_EMAIL:-noreply@example.com}
-      - FROM_NAME=${FROM_NAME:-Gestionale Energia}
-      # AI configuration (opzionale)
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      # Nginx Proxy (Let's Encrypt)
-      - VIRTUAL_HOST=gmgestionale.cloud
-      - VIRTUAL_PORT=3001
-      - LETSENCRYPT_HOST=gmgestionale.cloud
-      - LETSENCRYPT_EMAIL=admin@gmgestionale.cloud
+      - DATABASE_PATH=/app/backend/database/database.sqlite
+      - INIT_DB=true
+    ports:
+      - "8080:3001"
     volumes:
-      - db_data:/data
       - uploads_data:/app/uploads
-      - ./backend/database:/app/backend/database
+      - database_data:/app/backend/database
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:3001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
+    # Avvio con migrazione automatica basata su DATABASE_PATH
     command: ["node", "scripts/start-with-migrate.js"]
 
-  nginx:
-    image: nginxproxy/nginx-proxy:alpine
-    container_name: nginx_proxy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      - DEFAULT_HOST=gmgestionale.cloud
-      - ENABLE_IPV6=0
-    volumes:
-      - nginx_certs:/etc/nginx/certs
-      - nginx_vhost:/etc/nginx/vhost.d
-      - nginx_html:/usr/share/nginx/html
-      - /var/run/docker.sock:/tmp/docker.sock:ro
-
-  acme:
-    image: nginxproxy/acme-companion
-    container_name: nginx_proxy_acme
-    restart: unless-stopped
-    depends_on:
-      - nginx
-    environment:
-      - DEFAULT_EMAIL=admin@gmgestionale.cloud
-      - NGINX_PROXY_CONTAINER=nginx_proxy
-    volumes:
-      - nginx_certs:/etc/nginx/certs
-      - nginx_vhost:/etc/nginx/vhost.d
-      - nginx_html:/usr/share/nginx/html
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-
-networks:
-  default:
-    driver: bridge
-
 volumes:
-  db_data:
   uploads_data:
-  nginx_certs:
-  nginx_vhost:
-  nginx_html:
+    driver: local
+  database_data:
+    driver: local
