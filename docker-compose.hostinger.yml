@@ -12,10 +12,10 @@ services:
       - JWT_EXPIRES_IN=7d
       - DATABASE_PATH=/data/gestionale_energia.db
       - DATABASE_URL=sqlite:/data/gestionale_energia.db
-      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8080}
-      - BACKEND_URL=${BACKEND_URL:-http://localhost:8080}
-      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:8080}
-      - SECURE_COOKIES=false
+      - FRONTEND_URL=${FRONTEND_URL:-https://gmgestionale.cloud}
+      - BACKEND_URL=${BACKEND_URL:-https://gmgestionale.cloud}
+      - CORS_ORIGIN=${CORS_ORIGIN:-https://gmgestionale.cloud}
+      - SECURE_COOKIES=true
       - TRUST_PROXY=true
       - LOG_LEVEL=info
       # Email configuration (opzionale)
