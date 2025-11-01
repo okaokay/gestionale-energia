@@ -81,12 +81,6 @@ export default function LoginPage() {
                         {loading ? 'Accesso in corso...' : 'Accedi'}
                     </button>
                 </form>
-                
-                <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                    <p className="text-sm text-blue-900 font-medium mb-2">Credenziali di test:</p>
-                    <p className="text-xs text-blue-700">Email: admin@gestionale.it</p>
-                    <p className="text-xs text-blue-700">Password: Admin123!</p>
-                </div>
             </div>
         </div>
     );

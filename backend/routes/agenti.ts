@@ -34,7 +34,7 @@ router.get('/:id/pagamenti', async (req: Request, res: Response, next: NextFunct
         // Verifica che l'agente esista
         const agenteResult = await pool.query(`
             SELECT id, nome, cognome, email FROM users 
-            WHERE id = ? AND role IN ('operatore', 'admin', 'super_admin')
+            WHERE id = ? AND ruolo IN ('operatore', 'admin', 'super_admin')
         `, [id]);
         
         if (agenteResult.rows.length === 0) {
@@ -172,7 +172,7 @@ router.get('/:id/pagamenti/export', async (req: Request, res: Response, next: Ne
         // Verifica che l'agente esista
         const agenteResult = await pool.query(`
             SELECT id, nome, cognome, email FROM users 
-            WHERE id = ? AND role IN ('operatore', 'admin', 'super_admin')
+            WHERE id = ? AND ruolo IN ('operatore', 'admin', 'super_admin')
         `, [id]);
         
         if (agenteResult.rows.length === 0) {
@@ -482,31 +482,24 @@ router.get('/', async (req: Request, res: Response) => {
                 email,
                 nome,
                 cognome,
-                role,
-                agency_name,
-                phone as telefono,
-                is_active,
-                created_at,
-                commissioni_luce_default,
-                commissioni_gas_default
+                ruolo,
+                attivo,
+                created_at
             FROM users
-            WHERE role IN ('operatore', 'admin', 'super_admin')
-            AND is_active = 1
+            WHERE ruolo IN ('operatore', 'admin', 'super_admin')
+            AND attivo = 1
         `;
         
         const params: any[] = [];
         
         // Admin vede solo gli agenti della sua agenzia
-        if (user.role === 'admin') {
-            query += ` AND (parent_id = ? OR id = ?)`;
-            params.push(user.id, user.id);
-        }
+        // Nel database SQLite attuale non esiste parent_id o agenzie; gli admin vedono tutti.
         
         query += ` ORDER BY nome, cognome`;
         
         const agentiResult = await pool.query(query, params);
         
-        // Aggiungi conteggio clienti assegnati e commissioni per ogni agente
+        // Aggiungi conteggio clienti assegnati; le commissioni dipendono da tabelle opzionali
         const agenti = await Promise.all(
             (agentiResult.rows as any[]).map(async (agente) => {
                 const countPrivati = await pool.query(
@@ -517,19 +510,23 @@ router.get('/', async (req: Request, res: Response) => {
                     'SELECT COUNT(*) as count FROM clienti_aziende WHERE assigned_agent_id = ?',
                     [agente.id]
                 );
-                
-                // Calcola commissioni totali
-                const commissioniResult = await pool.query(
-                    `SELECT SUM(importo) as totale 
-                     FROM contabilita_movimenti 
-                     WHERE agent_id = ? AND tipo = 'compenso'`,
-                    [agente.id]
-                );
-                
+
+                // Alcuni ambienti SQLite non includono la tabella contabilita_movimenti; gestiamo commissioni a 0
+                let commissioniTotali = 0;
+                try {
+                    const commissioniResult = await pool.query(
+                        `SELECT SUM(importo) as totale FROM contabilita_movimenti WHERE agent_id = ? AND tipo = 'compenso'`,
+                        [agente.id]
+                    );
+                    commissioniTotali = (commissioniResult.rows[0] as any)?.totale || 0;
+                } catch (_) {
+                    commissioniTotali = 0;
+                }
+
                 return {
                     ...agente,
                     clienti_assegnati: (countPrivati.rows[0] as any).count + (countAziende.rows[0] as any).count,
-                    commissioni_totali: (commissioniResult.rows[0] as any)?.totale || 0
+                    commissioni_totali: commissioniTotali
                 };
             })
         );

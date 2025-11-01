@@ -162,6 +162,33 @@ export const offerteAPI = {
     delete: (id: string) => api.delete(`/offerte/${id}`),
 };
 
+// ============ IMPORT UNIFICATO ==========
+export const unifiedImportAPI = {
+    upload: (file: File, options?: { dryRun?: boolean; autoDetectType?: boolean; batchSize?: number; skipValidation?: boolean; skipAssociation?: boolean }) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (options) {
+            formData.append('options', JSON.stringify(options));
+        }
+        return api.post('/unified-import/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+    },
+    preview: (file: File, options?: { autoDetectType?: boolean }) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (options) {
+            formData.append('options', JSON.stringify(options));
+        }
+        return api.post('/unified-import/preview', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+    },
+    progress: (importId: string) => api.get(`/unified-import/progress/${importId}`),
+    result: (importId: string) => api.get(`/unified-import/result/${importId}`),
+    supportedTypes: () => api.get('/unified-import/supported-types'),
+};
+
 // ============ DASHBOARD ============
 export const dashboardAPI = {
     getStats: () => api.get('/dashboard/stats'),

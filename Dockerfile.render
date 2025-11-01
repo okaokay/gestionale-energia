@@ -31,6 +31,7 @@ RUN npm ci
 # Copia il codice sorgente
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
+COPY scripts/ ./scripts/
 
 # Build del frontend
 WORKDIR /app/frontend

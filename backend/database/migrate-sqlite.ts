@@ -127,6 +127,34 @@ async function runMigration() {
         
         console.log('✅ Tabelle contratti create');
 
+        // ===============================================
+        // TABELLA: contabilita_movimenti
+        // ===============================================
+        console.log('💰 Creazione tabella contabilita_movimenti...');
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS contabilita_movimenti (
+                id TEXT PRIMARY KEY,
+                tipo TEXT NOT NULL,
+                agent_id TEXT,
+                cliente_id TEXT,
+                cliente_tipo TEXT CHECK (cliente_tipo IN ('privato','azienda')),
+                importo REAL NOT NULL,
+                descrizione TEXT,
+                stato TEXT DEFAULT 'maturato' CHECK (stato IN ('maturato','da_pagare','pagato','annullato')),
+                data_movimento TEXT DEFAULT CURRENT_TIMESTAMP,
+                data_pagamento TEXT,
+                note TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (agent_id) REFERENCES users(id) ON DELETE SET NULL
+            );
+        `);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_movimenti_agent ON contabilita_movimenti(agent_id);`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_movimenti_tipo ON contabilita_movimenti(tipo);`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_movimenti_stato ON contabilita_movimenti(stato);`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_movimenti_data_movimento ON contabilita_movimenti(data_movimento);`);
+        console.log('✅ Tabella contabilita_movimenti creata con indici');
+
         // Tabella offerte
         db.exec(`
             CREATE TABLE IF NOT EXISTS offerte (
@@ -160,6 +188,32 @@ async function runMigration() {
         console.log('✅ Tabella offerte creata');
 
         // ===============================================
+        // PATCH: colonne mancanti su users per compatibilità
+        // ===============================================
+        console.log('🧩 Verifica/Aggiunta colonne utenti mancanti...');
+        const userColsToAdd = [
+            { sql: "ALTER TABLE users ADD COLUMN role TEXT", name: 'role' },
+            { sql: "ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1", name: 'is_active' },
+            { sql: "ALTER TABLE users ADD COLUMN parent_id TEXT", name: 'parent_id' },
+            { sql: "ALTER TABLE users ADD COLUMN agency_name TEXT", name: 'agency_name' },
+            { sql: "ALTER TABLE users ADD COLUMN phone TEXT", name: 'phone' },
+            { sql: "ALTER TABLE users ADD COLUMN commissioni_luce_default REAL DEFAULT 0", name: 'commissioni_luce_default' },
+            { sql: "ALTER TABLE users ADD COLUMN commissioni_gas_default REAL DEFAULT 0", name: 'commissioni_gas_default' }
+        ];
+        for (const col of userColsToAdd) {
+            try {
+                db.exec(col.sql);
+                console.log(`   ✅ Aggiunta colonna users.${col.name}`);
+            } catch (e: any) {
+                if (typeof e.message === 'string' && e.message.includes('duplicate column name')) {
+                    console.log(`   ⚠️  users.${col.name} già presente, skip`);
+                } else {
+                    console.log(`   ⚠️  Impossibile aggiungere users.${col.name} (potrebbe già esistere):`, e.message || e);
+                }
+            }
+        }
+
+        // ===============================================
         // PATCH: colonne mancanti per compatibilità query
         // ===============================================
         console.log('🧩 Verifica/Aggiunta colonne mancanti...');
@@ -176,18 +230,7 @@ async function runMigration() {
             }
         }
 
-        try {
-            db.exec(`
-                ALTER TABLE email_campaigns ADD COLUMN scheduled_end_at TEXT;
-            `);
-            console.log('   ✅ Aggiunta colonna email_campaigns.scheduled_end_at');
-        } catch (e: any) {
-            if (typeof e.message === 'string' && e.message.includes('duplicate column name')) {
-                console.log('   ⚠️  scheduled_end_at già presente su email_campaigns, skip');
-            } else {
-                console.log('   ⚠️  Impossibile aggiungere scheduled_end_at (potrebbe già esistere):', e.message || e);
-            }
-        }
+        // scheduled_end_at verrà aggiunta dopo la creazione della tabella email_campaigns
 
         // Colonne aggiuntive richieste da /api/clienti (privati)
         const addPrivatiColumns = [
@@ -221,7 +264,10 @@ async function runMigration() {
             { sql: "ALTER TABLE clienti_aziende ADD COLUMN assigned_agent_id TEXT", name: 'assigned_agent_id' },
             { sql: "ALTER TABLE clienti_aziende ADD COLUMN commissione_pattuita REAL", name: 'commissione_pattuita' },
             { sql: "ALTER TABLE clienti_aziende ADD COLUMN commissione_pagata INTEGER DEFAULT 0", name: 'commissione_pagata' },
-            { sql: "ALTER TABLE clienti_aziende ADD COLUMN email_principale TEXT", name: 'email_principale' }
+            { sql: "ALTER TABLE clienti_aziende ADD COLUMN email_principale TEXT", name: 'email_principale' },
+            { sql: "ALTER TABLE clienti_aziende ADD COLUMN incomplete_data INTEGER DEFAULT 0", name: 'incomplete_data' },
+            { sql: "ALTER TABLE clienti_aziende ADD COLUMN missing_fields TEXT", name: 'missing_fields' },
+            { sql: "ALTER TABLE clienti_aziende ADD COLUMN data_quality_score INTEGER DEFAULT 0", name: 'data_quality_score' }
         ];
         for (const col of addAziendeColumns) {
             try {
@@ -239,7 +285,9 @@ async function runMigration() {
         // Colonne necessarie per ordinamento stato contratti (data_inizio)
         const addContrattiColumns = [
             { table: 'contratti_luce', name: 'data_inizio', sql: 'ALTER TABLE contratti_luce ADD COLUMN data_inizio TEXT' },
-            { table: 'contratti_gas', name: 'data_inizio', sql: 'ALTER TABLE contratti_gas ADD COLUMN data_inizio TEXT' }
+            { table: 'contratti_gas', name: 'data_inizio', sql: 'ALTER TABLE contratti_gas ADD COLUMN data_inizio TEXT' },
+            { table: 'contratti_luce', name: 'data_fine', sql: 'ALTER TABLE contratti_luce ADD COLUMN data_fine TEXT' },
+            { table: 'contratti_gas', name: 'data_fine', sql: 'ALTER TABLE contratti_gas ADD COLUMN data_fine TEXT' }
         ];
         for (const col of addContrattiColumns) {
             try {
@@ -253,6 +301,35 @@ async function runMigration() {
                 }
             }
         }
+
+        // ===============================================
+        // TABELLA: compensi
+        // ===============================================
+        console.log('💼 Creazione tabella compensi...');
+        db.exec(`
+            CREATE TABLE IF NOT EXISTS compensi (
+                id TEXT PRIMARY KEY,
+                agente_id TEXT NOT NULL,
+                cliente_id TEXT,
+                cliente_tipo TEXT CHECK (cliente_tipo IN ('privato','azienda')),
+                contratto_id TEXT,
+                contratto_tipo TEXT CHECK (contratto_tipo IN ('luce','gas')),
+                importo REAL NOT NULL,
+                tipo TEXT NOT NULL DEFAULT 'compenso',
+                descrizione TEXT,
+                stato TEXT DEFAULT 'maturato' CHECK (stato IN ('maturato','da_pagare','pagato','annullato')),
+                data_maturazione TEXT DEFAULT CURRENT_TIMESTAMP,
+                data_pagamento TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (agente_id) REFERENCES users(id) ON DELETE SET NULL
+            );
+        `);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_compensi_agente ON compensi(agente_id);`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_compensi_stato ON compensi(stato);`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_compensi_tipo ON compensi(tipo);`);
+        db.exec(`CREATE INDEX IF NOT EXISTS idx_compensi_data_maturazione ON compensi(data_maturazione);`);
+        console.log('✅ Tabella compensi creata con indici');
 
         // ===============================================
         // TABELLE: newsletter e clienti_newsletter
@@ -357,6 +434,8 @@ async function runMigration() {
                 clicked_count INTEGER DEFAULT 0,
                 failed_count INTEGER DEFAULT 0,
                 scheduled_at TEXT,
+                scheduled_end_at TEXT,
+                sent_at TEXT,
                 started_at TEXT,
                 completed_at TEXT,
                 creato_da TEXT,
@@ -379,6 +458,37 @@ async function runMigration() {
             CREATE INDEX IF NOT EXISTS idx_campaigns_created ON email_campaigns(created_at);
         `);
         console.log('✅ Tabella email_campaigns creata con indici');
+
+        // Assicurati che le colonne esistano anche su DB già creati in versioni precedenti
+        try {
+            db.exec(`
+                ALTER TABLE email_campaigns ADD COLUMN scheduled_end_at TEXT;
+            `);
+            console.log('   ✅ Aggiunta colonna email_campaigns.scheduled_end_at');
+        } catch (e: any) {
+            if (typeof e.message === 'string' && e.message.includes('duplicate column name')) {
+                console.log('   ⚠️  scheduled_end_at già presente su email_campaigns, skip');
+            } else if (typeof e.message === 'string' && e.message.includes('no such table')) {
+                console.log('   ⚠️  Tabella email_campaigns non trovata durante ALTER, già gestita nella creazione');
+            } else {
+                console.log('   ⚠️  Impossibile aggiungere scheduled_end_at (potrebbe già esistere):', e.message || e);
+            }
+        }
+
+        try {
+            db.exec(`
+                ALTER TABLE email_campaigns ADD COLUMN sent_at TEXT;
+            `);
+            console.log('   ✅ Aggiunta colonna email_campaigns.sent_at');
+        } catch (e: any) {
+            if (typeof e.message === 'string' && e.message.includes('duplicate column name')) {
+                console.log('   ⚠️  sent_at già presente su email_campaigns, skip');
+            } else if (typeof e.message === 'string' && e.message.includes('no such table')) {
+                console.log('   ⚠️  Tabella email_campaigns non trovata durante ALTER, già gestita nella creazione');
+            } else {
+                console.log('   ⚠️  Impossibile aggiungere sent_at (potrebbe già esistere):', e.message || e);
+            }
+        }
 
         // ===============================================
         // TABELLA: email_logs (completa)

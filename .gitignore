@@ -17,7 +17,9 @@ build/
 .env.test.local
 .env.production.local
 .env.hostinger
+ .env.production
 frontend/.env
+ frontend/.env.production
 
 # Database files (keep example)
 *.db

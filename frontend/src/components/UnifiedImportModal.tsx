@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Upload, CheckCircle, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { unifiedImportAPI } from '../services/api';
 
 interface UnifiedImportModalProps {
   isOpen: boolean;
@@ -32,16 +33,8 @@ export default function UnifiedImportModal({ isOpen, onClose, onImportComplete }
     setImportId(null);
     setResult(null);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('options', JSON.stringify({ dryRun, autoDetectType }));
-
-      const resp = await fetch('http://localhost:3001/api/unified-import/upload', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await resp.json();
-      if (!resp.ok || !data?.success) {
+      const { data } = await unifiedImportAPI.upload(file, { dryRun, autoDetectType });
+      if (!data?.success) {
         throw new Error(data?.message || 'Errore upload import');
       }
       const id = data?.data?.importId || data?.importId;
@@ -58,9 +51,8 @@ export default function UnifiedImportModal({ isOpen, onClose, onImportComplete }
   const fetchResult = async () => {
     if (!importId) return;
     try {
-      const resp = await fetch(`http://localhost:3001/api/unified-import/result/${importId}`);
-      const data = await resp.json();
-      if (!resp.ok || !data?.success) {
+      const { data } = await unifiedImportAPI.result(importId);
+      if (!data?.success) {
         throw new Error(data?.message || 'Errore risultato import');
       }
       setResult(data.data);

@@ -1,30 +1,44 @@
 services:
-  gestionale-energia:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    container_name: gestionale-energia-app
+  app:
+    build: .
+    container_name: gestionale_energia_hostinger
     restart: unless-stopped
+    ports:
+      - "8080:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001
-      - TZ=Europe/Rome
-      - JWT_SECRET=your-super-secret-jwt-key-change-this-hostinger-2024
+      - JWT_SECRET=change-this-in-production
       - JWT_EXPIRES_IN=7d
-      - DATABASE_PATH=/app/gestionale_energia.db
-      - FRONTEND_URL=http://localhost:8080
-      - BACKEND_URL=http://localhost:8080
-    ports:
-      - "8080:3001"
+      - DATABASE_PATH=/data/gestionale_energia.db
+      - DATABASE_URL=sqlite:/data/gestionale_energia.db
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:8080}
+      - BACKEND_URL=${BACKEND_URL:-http://localhost:8080}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:8080}
+      - SECURE_COOKIES=false
+      - TRUST_PROXY=true
+      - LOG_LEVEL=info
+      # Email configuration (opzionale)
+      - BREVO_API_KEY=${BREVO_API_KEY:-}
+      - FROM_EMAIL=${FROM_EMAIL:-noreply@example.com}
+      - FROM_NAME=${FROM_NAME:-Gestionale Energia}
+      # AI configuration (opzionale)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     volumes:
+      - db_data:/data
       - uploads_data:/app/uploads
+      - ./backend/database:/app/backend/database
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+    command: ["node", "scripts/start-with-migrate.js"]
+
+networks:
+  default:
+    driver: bridge
 
 volumes:
+  db_data:
   uploads_data:
-    driver: local

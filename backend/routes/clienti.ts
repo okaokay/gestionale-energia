@@ -68,6 +68,52 @@ router.get('/', validatePagination, async (req: Request, res: Response, next: Ne
         }
         // Super admin: nessun filtro (vede tutto)
         
+        // Alcune installazioni potrebbero non avere tabelle di newsletter
+        // Verifichiamo la loro presenza per evitare errori "no such table"
+        let hasNewsletterTables = true;
+        try {
+            const checkCn = await pool.query(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+                ['clienti_newsletter']
+            );
+            const checkN = await pool.query(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+                ['newsletter']
+            );
+            hasNewsletterTables = (checkCn.rows?.length > 0) && (checkN.rows?.length > 0);
+        } catch (_) {
+            hasNewsletterTables = false;
+        }
+        // Costruiamo selezioni condizionali per newsletter
+        const newsletterPrivatiSelect = hasNewsletterTables
+            ? `(
+                    SELECT GROUP_CONCAT(n.nome, ', ')
+                    FROM clienti_newsletter cn 
+                    JOIN newsletter n ON cn.newsletter_id = n.id 
+                    WHERE cn.cliente_id = cp.id AND cn.cliente_tipo = 'privato'
+               ) as newsletter_nomi,
+               (
+                    SELECT COUNT(*) 
+                    FROM clienti_newsletter cn 
+                    WHERE cn.cliente_id = cp.id AND cn.cliente_tipo = 'privato'
+               ) as newsletter_count`
+            : `NULL as newsletter_nomi,
+               0 as newsletter_count`;
+        const newsletterAziendeSelect = hasNewsletterTables
+            ? `(
+                    SELECT GROUP_CONCAT(n.nome, ', ')
+                    FROM clienti_newsletter cn 
+                    JOIN newsletter n ON cn.newsletter_id = n.id 
+                    WHERE cn.cliente_id = ca.id AND cn.cliente_tipo = 'azienda'
+               ) as newsletter_nomi,
+               (
+                    SELECT COUNT(*) 
+                    FROM clienti_newsletter cn 
+                    WHERE cn.cliente_id = ca.id AND cn.cliente_tipo = 'azienda'
+               ) as newsletter_count`
+            : `NULL as newsletter_nomi,
+               0 as newsletter_count`;
+        
         // Query clienti privati
         let privati: any[] = [];
         if (tipo !== 'aziende') {
@@ -94,13 +140,7 @@ router.get('/', validatePagination, async (req: Request, res: Response, next: Ne
                     (SELECT COUNT(*) FROM contratti_gas WHERE cliente_privato_id = cp.id) as contratti_gas,
                     (SELECT stato FROM contratti_luce WHERE cliente_privato_id = cp.id ORDER BY data_inizio DESC LIMIT 1) as stato_contratto_luce,
                     (SELECT stato FROM contratti_gas WHERE cliente_privato_id = cp.id ORDER BY data_inizio DESC LIMIT 1) as stato_contratto_gas,
-                    (SELECT GROUP_CONCAT(n.nome, ', ') 
-                     FROM clienti_newsletter cn 
-                     JOIN newsletter n ON cn.newsletter_id = n.id 
-                     WHERE cn.cliente_id = cp.id AND cn.cliente_tipo = 'privato') as newsletter_nomi,
-                    (SELECT COUNT(*) 
-                     FROM clienti_newsletter cn 
-                     WHERE cn.cliente_id = cp.id AND cn.cliente_tipo = 'privato') as newsletter_count
+                    ${newsletterPrivatiSelect}
                 FROM clienti_privati cp
                 ${searchFilter}
                 ${roleFilter}
@@ -155,13 +195,7 @@ router.get('/', validatePagination, async (req: Request, res: Response, next: Ne
                     (SELECT COUNT(*) FROM contratti_gas WHERE cliente_azienda_id = ca.id) as contratti_gas,
                     (SELECT stato FROM contratti_luce WHERE cliente_azienda_id = ca.id ORDER BY data_inizio DESC LIMIT 1) as stato_contratto_luce,
                     (SELECT stato FROM contratti_gas WHERE cliente_azienda_id = ca.id ORDER BY data_inizio DESC LIMIT 1) as stato_contratto_gas,
-                    (SELECT GROUP_CONCAT(n.nome, ', ') 
-                     FROM clienti_newsletter cn 
-                     JOIN newsletter n ON cn.newsletter_id = n.id 
-                     WHERE cn.cliente_id = ca.id AND cn.cliente_tipo = 'azienda') as newsletter_nomi,
-                    (SELECT COUNT(*) 
-                     FROM clienti_newsletter cn 
-                     WHERE cn.cliente_id = ca.id AND cn.cliente_tipo = 'azienda') as newsletter_count
+                    ${newsletterAziendeSelect}
                 FROM clienti_aziende ca
                 ${searchFilterAziende}
                 ${roleFilterAziende}

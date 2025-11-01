@@ -149,27 +149,51 @@ async function insertClientePrivato(record: Record<string, string>, createdBy: s
 
     // Rileva colonne disponibili per compatibilità
     const colsAvailable = await getTableColumns('clienti_privati');
-    const columns: string[] = [
-        'nome','cognome','codice_fiscale','data_nascita',
-        'email_principale','telefono_mobile','via_residenza',
-        'civico_residenza','cap_residenza','citta_residenza','provincia_residenza',
-        'tipo_documento','numero_documento','ente_rilascio','data_scadenza_documento','iban',
-        'consenso_privacy','consenso_marketing','data_consenso','created_by'
-    ];
-    const values: any[] = [
-        nome, cognome, cf, data_nascita,
-        email, tel, via,
-        civico, cap, citta, provincia,
-        tipo_doc, num_doc, ente, scadenza_doc, iban,
-        1, 1, new Date().toISOString(), createdBy
-    ];
-    if (colsAvailable.includes('assigned_agent_id') && assignedAgentId) {
-        columns.push('assigned_agent_id');
-        values.push(assignedAgentId);
+    // Mappa completa delle colonne possibili con i valori calcolati
+    const allFieldMap: Record<string, any> = {
+        nome: nome,
+        cognome: cognome,
+        codice_fiscale: cf,
+        data_nascita: data_nascita,
+        email_principale: email,
+        telefono_mobile: tel,
+        via_residenza: via,
+        civico_residenza: civico,
+        cap_residenza: cap,
+        citta_residenza: citta,
+        provincia_residenza: provincia,
+        tipo_documento: tipo_doc,
+        numero_documento: num_doc,
+        ente_rilascio: ente,
+        data_scadenza_documento: scadenza_doc,
+        iban: iban,
+        consenso_privacy: 1,
+        consenso_marketing: 1,
+        data_consenso: new Date().toISOString(),
+        created_by: createdBy || null
+    };
+
+    // Colonne opzionali aggiuntive se disponibili
+    if (assignedAgentId) {
+        allFieldMap['assigned_agent_id'] = assignedAgentId;
     }
-    if (colsAvailable.includes('created_at')) {
-        columns.push('created_at');
-        values.push(new Date().toISOString());
+    // Inserisci created_at solo se la colonna esiste; usiamo l'ora attuale
+    allFieldMap['created_at'] = new Date().toISOString();
+
+    // Costruisci dinamicamente columns/values includendo SOLO colonne presenti nel DB
+    const columns: string[] = [];
+    const values: any[] = [];
+    for (const [col, val] of Object.entries(allFieldMap)) {
+        if (colsAvailable.includes(col)) {
+            columns.push(col);
+            values.push(val);
+        }
+    }
+
+    // Garanzia: assicurati che ci sia almeno un set minimo di colonne essenziali
+    // (nome, cognome, email_principale) se presenti, altrimenti l'INSERT fallisce per mancanza di colonne
+    if (columns.length === 0) {
+        throw new Error('Schema clienti_privati non compatibile: nessuna colonna disponibile per l\'inserimento');
     }
 
     const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
