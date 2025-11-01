@@ -1,0 +1,77 @@
+# Docker Compose definitivo per hosting via URL (Hostinger)
+# - Clona il container esistente (immagine pubblica) e migra/inizializza DB
+# - Include env, volumi, porte, dipendenze, logging e sicurezza
+
+services:
+  gestionale-energia:
+    image: docker.io/okaokay/gestionale-energia:hostinger-v1
+    pull_policy: always
+    container_name: gestionale-energia
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - TZ=Europe/Rome
+      - LOG_LEVEL=info
+      - FRONTEND_URL=https://gmgestionale.cloud
+      - BACKEND_URL=https://gmgestionale.cloud
+      - CORS_ORIGIN=https://gmgestionale.cloud
+      - SECURE_COOKIES=true
+      - TRUST_PROXY=true
+      - JWT_SECRET=${JWT_SECRET:-change-me-please-2024}
+      - JWT_EXPIRES_IN=7d
+      - DATABASE_PATH=/app/backend/database/database.sqlite
+      - INIT_DB=true
+    ports:
+      - "8080:3001"
+    volumes:
+      - uploads_data:/app/uploads
+      - database_data:/app/backend/database
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    command: ["node", "scripts/start-with-migrate.js"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - gestionale_net
+
+  nginx:
+    image: nginx:alpine
+    container_name: gestionale-nginx
+    depends_on:
+      gestionale-energia:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    # Config reverse proxy inline per evitare file esterni
+    command: >
+      sh -lc 'cat > /etc/nginx/conf.d/default.conf <<"EOF"\nserver {\n  listen 80;\n  client_max_body_size 50M;\n  location / {\n    proxy_pass http://gestionale-energia:3001;\n    proxy_http_version 1.1;\n    proxy_set_header Upgrade $http_upgrade;\n    proxy_set_header Connection "upgrade";\n    proxy_set_header Host $host;\n    proxy_set_header X-Real-IP $remote_addr;\n    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n    proxy_set_header X-Forwarded-Proto $scheme;\n    proxy_read_timeout 300;\n  }\n  location /health {\n    proxy_pass http://gestionale-energia:3001/health;\n  }\n  add_header X-Content-Type-Options nosniff;\n  add_header X-Frame-Options SAMEORIGIN;\n  add_header X-XSS-Protection "1; mode=block";\n}\nEOF\n && nginx -g "daemon off;"'
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - gestionale_net
+
+networks:
+  gestionale_net:
+    driver: bridge
+
+volumes:
+  uploads_data:
+    driver: local
+  database_data:
+    driver: local
