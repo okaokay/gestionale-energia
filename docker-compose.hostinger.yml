@@ -4,7 +4,7 @@ services:
     container_name: gestionale_energia_hostinger
     restart: unless-stopped
     ports:
-      - "8080:3001"
+      - "80:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001
@@ -15,7 +15,7 @@ services:
       - FRONTEND_URL=${FRONTEND_URL:-https://gmgestionale.cloud}
       - BACKEND_URL=${BACKEND_URL:-https://gmgestionale.cloud}
       - CORS_ORIGIN=${CORS_ORIGIN:-https://gmgestionale.cloud}
-      - SECURE_COOKIES=true
+      - SECURE_COOKIES=false
       - TRUST_PROXY=true
       - LOG_LEVEL=info
       # Email configuration (opzionale)
