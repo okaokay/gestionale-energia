@@ -10,6 +10,77 @@ const dbPath = process.env.DATABASE_PATH
 
 console.log('📁 DATABASE_PATH:', dbPath);
 
+// Ripristina dati di seed se i volumi sono vuoti (DB e uploads)
+function restoreSeedDataIfNeeded() {
+  try {
+    const seedDir = path.join(process.cwd(), 'seed_data');
+    const seedDbPath = path.join(seedDir, 'gestionale_energia_seed.db');
+    const seedUploadsPath = path.join(seedDir, 'uploads_seed');
+
+    // Assicura cartella /data esista
+    const dbDir = path.dirname(dbPath);
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
+
+    const dbExists = fs.existsSync(dbPath);
+    const dbSize = dbExists ? fs.statSync(dbPath).size : 0;
+
+    // Se DB non esiste o è vuoto e abbiamo un seed, copia
+    if ((!dbExists || dbSize === 0) && fs.existsSync(seedDbPath)) {
+      try {
+        fs.copyFileSync(seedDbPath, dbPath);
+        console.log('🌱 Seed DB ripristinato in', dbPath);
+      } catch (e) {
+        console.log('⚠️  Impossibile ripristinare seed DB:', e.message || e);
+      }
+    }
+
+    // Ripristina uploads se cartella è vuota e seed esiste
+    const uploadsTarget = path.join(process.cwd(), 'uploads');
+    if (!fs.existsSync(uploadsTarget)) {
+      fs.mkdirSync(uploadsTarget, { recursive: true });
+    }
+    const uploadsEmpty = (() => {
+      try {
+        const files = fs.readdirSync(uploadsTarget);
+        return !files || files.length === 0;
+      } catch {
+        return true;
+      }
+    })();
+
+    if (uploadsEmpty && fs.existsSync(seedUploadsPath)) {
+      try {
+        // fs.cpSync disponibile su Node >=16
+        if (fs.cpSync) {
+          fs.cpSync(seedUploadsPath, uploadsTarget, { recursive: true });
+        } else {
+          // fallback: copia file per file
+          const copyRec = (src, dest) => {
+            const stats = fs.statSync(src);
+            if (stats.isDirectory()) {
+              if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+              for (const entry of fs.readdirSync(src)) {
+                copyRec(path.join(src, entry), path.join(dest, entry));
+              }
+            } else {
+              fs.copyFileSync(src, dest);
+            }
+          };
+          copyRec(seedUploadsPath, uploadsTarget);
+        }
+        console.log('🌱 Seed uploads ripristinato in', uploadsTarget);
+      } catch (e) {
+        console.log('⚠️  Impossibile ripristinare seed uploads:', e.message || e);
+      }
+    }
+  } catch (err) {
+    console.log('❌ Errore ripristino seed data:', err);
+    // Non bloccare l'avvio
+  }
+}
+
 // Se il file DB non esiste, esegue la migrazione usando il build JS
 function ensureDatabaseMigrated() {
   try {
@@ -359,6 +430,9 @@ function startServer() {
   process.exit(res.status || 0);
 }
 
+// Prima di migrare, prova a ripristinare seed se i volumi sono vuoti
+// Nota: la migrazione è idempotente e si applica anche sul seed
+restoreSeedDataIfNeeded();
 ensureDatabaseMigrated();
 // Ricrea tabelle clienti con campi nullable se sono presenti vincoli NOT NULL
 relaxClientNullConstraintsIfNeeded();
