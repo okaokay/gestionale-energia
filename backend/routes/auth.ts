@@ -58,8 +58,23 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
             });
         }
         
-        // Verifica password
-        const passwordMatch = await bcrypt.compare(password, user.password_hash);
+        // Verifica password (supporta sia 'password_hash' che 'password')
+        const passwordHash: string | null =
+            (typeof (user as any).password_hash === 'string' && (user as any).password_hash.length > 0)
+                ? (user as any).password_hash
+                : ((typeof (user as any).password === 'string' && (user as any).password.length > 0)
+                    ? (user as any).password
+                    : null);
+
+        if (!passwordHash) {
+            console.warn('⚠️  Login fallito: hash password mancante per utente', user.email);
+            return res.status(401).json({
+                success: false,
+                message: 'Credenziali non valide'
+            });
+        }
+
+        const passwordMatch = await bcrypt.compare(password, passwordHash);
         
         if (!passwordMatch) {
             return res.status(401).json({
