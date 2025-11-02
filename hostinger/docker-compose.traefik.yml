@@ -6,6 +6,9 @@ services:
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
+      # Provider file per caricare certificati TLS (Cloudflare Origin)
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
       # Reindirizzamento HTTP->HTTPS attivo per accesso diretto
@@ -15,8 +18,8 @@ services:
       - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
       - --certificatesresolvers.le.acme.email=admin@gmgestionale.cloud
       - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
-      # Usa ambiente staging per certificati immediati (non validi per browser ma funzionanti)
-      - --certificatesresolvers.le.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
+      # ACME: lascia produzione (verrà ignorato se usiamo certificati file)
+      - --certificatesresolvers.le.acme.caserver=https://acme-v02.api.letsencrypt.org/directory
       - --accesslog=true
       - --log.level=INFO
     ports:
@@ -25,6 +28,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./traefik/letsencrypt:/letsencrypt
+      - ./traefik/dynamic:/etc/traefik/dynamic
+      - ./traefik/certs:/certs
     networks:
       - proxy
 
@@ -107,9 +112,9 @@ services:
       - "traefik.enable=true"
       # Per evitare il limite 'exact set of identifiers', richiedi temporaneamente solo gmgestionale.cloud
       - "traefik.http.routers.gmgestionale.rule=Host(`gmgestionale.cloud`)"
-      # Espone sia HTTP che HTTPS finché il certificato valido non è emesso
-      - "traefik.http.routers.gmgestionale.entrypoints=web,websecure"
-      - "traefik.http.routers.gmgestionale.tls.certresolver=le"
+      # Router solo HTTPS (HTTP viene reindirizzato a livello di entrypoint)
+      - "traefik.http.routers.gmgestionale.entrypoints=websecure"
+      - "traefik.http.routers.gmgestionale.tls=true"
       - "traefik.http.services.gmgestionale.loadbalancer.server.port=80"
       # Router/redirect solo HTTP per www -> apex, senza bisogno di certificato
       - "traefik.http.middlewares.redirect-to-apex.redirectregex.regex=^https?://www\\.gmgestionale\\.cloud/(.*)"
