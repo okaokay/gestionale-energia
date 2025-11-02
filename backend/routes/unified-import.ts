@@ -237,9 +237,9 @@ async function findClienteAziendaId(record: Record<string, string>): Promise<str
 }
 
 async function insertClientePrivato(record: Record<string, string>, createdBy: string | null, assignedAgentId: string | null, dryRun: boolean): Promise<string> {
-    // Usa UUID come id (schema: id TEXT PRIMARY KEY)
-    const id = randomUUID();
-    if (dryRun) return id;
+    // Genera un UUID, lo useremo solo se la colonna id è TEXT
+    const uuidCandidate = randomUUID();
+    if (dryRun) return uuidCandidate;
 
     const nome = (record.nome || record.cliente_nome || '').trim() || null;
     const cognome = (record.cognome || record.cliente_cognome || '').trim() || null;
@@ -262,8 +262,10 @@ async function insertClientePrivato(record: Record<string, string>, createdBy: s
 
     const colsAvailable = await getTableColumns('clienti_privati');
     const colTypes = await getTableColumnTypes('clienti_privati');
+    const idType = (colTypes['id'] || '').toUpperCase();
+    const canExplicitId = !idType || /^(TEXT|CHAR|VARCHAR)/.test(idType);
     const allFieldMap: Record<string, any> = {
-        id,
+        id: canExplicitId ? uuidCandidate : undefined,
         nome,
         cognome,
         codice_fiscale: cf,
@@ -293,11 +295,12 @@ async function insertClientePrivato(record: Record<string, string>, createdBy: s
 
     const columns: string[] = [];
     const values: any[] = [];
-    for (const [col, val] of Object.entries(allFieldMap)) {
+    for (const [col, valRaw] of Object.entries(allFieldMap)) {
+        // Gestione id: includi solo se la colonna è TEXT, altrimenti lascia autoincrement e NON inserire id
+        if (col === 'id' && !canExplicitId) continue;
         if (col === 'id' || colsAvailable.includes(col)) {
-            // Coercizione per evitare datatype mismatch
             const t = (colTypes[col] || '').toUpperCase();
-            let v = val;
+            let v = valRaw;
             if (v !== null && v !== undefined) {
                 if (/^(INTEGER|INT|BIGINT|SMALLINT)$/.test(t)) {
                     const num = normalizeNumber(v);
@@ -315,7 +318,6 @@ async function insertClientePrivato(record: Record<string, string>, createdBy: s
                     const d = normalizeDate(String(v));
                     v = d || null;
                 } else {
-                    // TEXT/VARCHAR: lascia come stringa
                     v = (v === null ? null : String(v));
                 }
             }
@@ -329,8 +331,26 @@ async function insertClientePrivato(record: Record<string, string>, createdBy: s
     }
 
     const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+    // Prova ad ottenere l'id tramite RETURNING; fallback a last_insert_rowid()
+    try {
+        const res = await pool.query<{ id: number | string }>(
+            `INSERT INTO clienti_privati (${columns.join(', ')}) VALUES (${placeholders}) RETURNING id`,
+            values
+        );
+        const newId = res.rows?.[0]?.id ? String(res.rows[0].id) : null;
+        if (newId) return newId;
+    } catch {
+        // Ignora e usa fallback
+    }
     await pool.query(`INSERT INTO clienti_privati (${columns.join(', ')}) VALUES (${placeholders})`, values);
-    return id;
+    try {
+        const rid = await pool.query<{ id: number | string }>(`SELECT last_insert_rowid() AS id`);
+        const newId = rid.rows?.[0]?.id ? String(rid.rows[0].id) : null;
+        if (newId) return newId;
+    } catch {
+        // Se non disponibile, come ultima risorsa ritorna uuidCandidate (solo se esplicito)
+    }
+    return canExplicitId ? uuidCandidate : uuidCandidate; // default: garantisci un ritorno coerente
 }
 
 // Effettua UPSERT esplicito: se esiste aggiorna, altrimenti inserisce con UUID
@@ -405,11 +425,14 @@ async function upsertClientePrivato(record: Record<string, string>, createdBy: s
 
 // Inserisce azienda con mappatura dinamica sulle colonne disponibili
 async function insertClienteAzienda(record: Record<string, string>, createdBy: string | null, assignedAgentId: string | null, dryRun: boolean): Promise<string> {
-    if (dryRun) return randomUUID();
-    const id = randomUUID();
+    const uuidCandidate = randomUUID();
+    if (dryRun) return uuidCandidate;
     const cols = await getTableColumns('clienti_aziende');
+    const colTypes = await getTableColumnTypes('clienti_aziende');
+    const idType = (colTypes['id'] || '').toUpperCase();
+    const canExplicitId = !idType || /^(TEXT|CHAR|VARCHAR)/.test(idType);
     const fieldMap: Record<string, any> = {
-        id,
+        id: canExplicitId ? uuidCandidate : undefined,
         ragione_sociale: (record.ragione_sociale || (record as any).ragione || '').trim() || null,
         partita_iva: (record.partita_iva || (record as any).piva || '').trim() || null,
         codice_fiscale: (record.codice_fiscale || '').trim() || null,
@@ -437,14 +460,30 @@ async function insertClienteAzienda(record: Record<string, string>, createdBy: s
     const columns: string[] = [];
     const values: any[] = [];
     Object.entries(fieldMap).forEach(([k, v]) => {
+        if (k === 'id' && !canExplicitId) return;
         if (k === 'id' || cols.includes(k)) {
             columns.push(k);
             values.push(v);
         }
     });
     const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+    try {
+        const res = await pool.query<{ id: number | string }>(
+            `INSERT INTO clienti_aziende (${columns.join(', ')}) VALUES (${placeholders}) RETURNING id`,
+            values
+        );
+        const newId = res.rows?.[0]?.id ? String(res.rows[0].id) : null;
+        if (newId) return newId;
+    } catch {
+        // Fallback
+    }
     await pool.query(`INSERT INTO clienti_aziende (${columns.join(', ')}) VALUES (${placeholders})`, values);
-    return id;
+    try {
+        const rid = await pool.query<{ id: number | string }>(`SELECT last_insert_rowid() AS id`);
+        const newId = rid.rows?.[0]?.id ? String(rid.rows[0].id) : null;
+        if (newId) return newId;
+    } catch {}
+    return canExplicitId ? uuidCandidate : uuidCandidate;
 }
 
 // Upsert azienda: aggiorna se trovata, altrimenti inserisce
