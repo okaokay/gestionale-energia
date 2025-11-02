@@ -48,7 +48,7 @@ services:
       - uploads_data:/app/uploads
       - database_data:/app/backend/database
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:3001/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/health"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -59,12 +59,12 @@ services:
     labels:
       - "traefik.enable=true"
       # HTTPS router
-      - "traefik.http.routers.gestionale.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
+      - "traefik.http.routers.gestionale.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`,`srv1072066.hstgr.cloud`)"
       - "traefik.http.routers.gestionale.entrypoints=websecure"
       - "traefik.http.routers.gestionale.tls.certresolver=myresolver"
       - "traefik.http.services.gestionale.loadbalancer.server.port=3001"
       # HTTP -> HTTPS redirect
-      - "traefik.http.routers.gestionale-http.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
+      - "traefik.http.routers.gestionale-http.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`,`srv1072066.hstgr.cloud`)"
       - "traefik.http.routers.gestionale-http.entrypoints=web"
       - "traefik.http.routers.gestionale-http.middlewares=redirect-https"
       - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
