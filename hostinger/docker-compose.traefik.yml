@@ -8,15 +8,15 @@ services:
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
-      # Reindirizzamento HTTP->HTTPS: abilitalo dopo l'emissione del certificato
-      # - --entrypoints.web.http.redirections.entryPoint.to=websecure
-      # - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      # Reindirizzamento HTTP->HTTPS attivo per accesso diretto
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
       - --certificatesresolvers.le.acme.httpchallenge=true
       - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
       - --certificatesresolvers.le.acme.email=admin@gmgestionale.cloud
       - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
-      # Consenti switch tra ambiente di produzione e staging di Let's Encrypt
-      - --certificatesresolvers.le.acme.caserver=${ACME_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
+      # Usa ambiente staging per certificati immediati (non validi per browser ma funzionanti)
+      - --certificatesresolvers.le.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
       - --accesslog=true
       - --log.level=INFO
     ports:
