@@ -228,7 +228,7 @@ async function insertClientePrivato(record: Record<string, string>, createdBy: s
     const cognome = (record.cognome || record.cliente_cognome || '').trim() || null;
     const cfVal = record.codice_fiscale || record.cliente_codice_fiscale || null;
     const cf = cfVal ? String(cfVal).trim().toUpperCase() : null;
-    const data_nascita = record.data_nascita || record.cliente_data_nascita || null;
+    const data_nascita = normalizeDate(record.data_nascita || record.cliente_data_nascita || null);
     const emailVal = record.email_principale || record.cliente_email || null;
     const email = emailVal ? String(emailVal).trim().toLowerCase() : null;
     const tel = (record.telefono_mobile || record.cliente_telefono || '').trim() || null;
@@ -240,7 +240,7 @@ async function insertClientePrivato(record: Record<string, string>, createdBy: s
     const tipo_doc = record.tipo_documento || record.cliente_documento_tipo || null;
     const num_doc = record.numero_documento || record.cliente_documento_numero || null;
     const ente = record.ente_rilascio || record.cliente_documento_rilasciato_da || null;
-    const scadenza_doc = record.data_scadenza_documento || record.cliente_documento_data_scadenza || null;
+    const scadenza_doc = normalizeDate(record.data_scadenza_documento || record.cliente_documento_data_scadenza || null);
     const iban = (record.iban || '').trim() || null;
 
     const colsAvailable = await getTableColumns('clienti_privati');
@@ -309,7 +309,7 @@ async function upsertClientePrivato(record: Record<string, string>, createdBy: s
         const updates: Record<string, any> = {
             nome: (record.nome || record.cliente_nome || '').trim() || null,
             cognome: (record.cognome || record.cliente_cognome || '').trim() || null,
-            data_nascita: record.data_nascita || record.cliente_data_nascita || null,
+            data_nascita: normalizeDate(record.data_nascita || record.cliente_data_nascita || null),
             telefono_mobile: (record.telefono_mobile || record.cliente_telefono || '').trim() || null,
             via_residenza: (record.via_residenza || record.cliente_indirizzo || '').trim() || null,
             civico_residenza: record.civico_residenza || null,
@@ -319,7 +319,7 @@ async function upsertClientePrivato(record: Record<string, string>, createdBy: s
             tipo_documento: record.tipo_documento || record.cliente_documento_tipo || null,
             numero_documento: record.numero_documento || record.cliente_documento_numero || null,
             ente_rilascio: record.ente_rilascio || record.cliente_documento_rilasciato_da || null,
-            data_scadenza_documento: record.data_scadenza_documento || record.cliente_documento_data_scadenza || null,
+            data_scadenza_documento: normalizeDate(record.data_scadenza_documento || record.cliente_documento_data_scadenza || null),
             iban: (record.iban || '').trim() || null
         };
         if (normalizedCf) updates['codice_fiscale'] = normalizedCf;
