@@ -1,33 +1,32 @@
+version: "3.8"
+
 services:
   traefik:
-    image: traefik:v2.11
+    image: traefik:v2.10
     container_name: traefik
     restart: unless-stopped
     command:
+      - --api.dashboard=true
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
-      - --certificatesresolvers.le.acme.httpchallenge=true
-      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
-      - --certificatesresolvers.le.acme.email=admin@gmgestionale.cloud
-      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
-      - --accesslog=true
-      - --log.level=INFO
+      - --certificatesresolvers.myresolver.acme.httpchallenge=true
+      - --certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.myresolver.acme.email=admin@gmgestionale.cloud
+      - --certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik-certs:/letsencrypt
-    security_opt:
-      - no-new-privileges:true
+      - traefik_letsencrypt:/letsencrypt
     networks:
-      - proxy
+      - gestionale_net
 
   gestionale-energia:
     build:
-      context: https://github.com/okaokay/gestionale-energia.git#main
+      context: ..
       dockerfile: Dockerfile
     container_name: gestionale-energia
     restart: unless-stopped
@@ -39,7 +38,6 @@ services:
       - FRONTEND_URL=https://gmgestionale.cloud
       - BACKEND_URL=https://gmgestionale.cloud
       - CORS_ORIGIN=https://gmgestionale.cloud
-      - UNSUBSCRIBE_URL=https://gmgestionale.cloud/unsubscribe
       - SECURE_COOKIES=true
       - TRUST_PROXY=true
       - JWT_SECRET=${JWT_SECRET:-change-me-please-2024}
@@ -56,38 +54,28 @@ services:
       retries: 5
       start_period: 60s
     command: ["node", "scripts/start-with-migrate.js"]
-    labels:
-      - "traefik.enable=true"
-      # Servizio backend che serve anche la SPA
-      - "traefik.http.services.gmgestionale.loadbalancer.server.port=3001"
-      # Router HTTP: forza redirect verso HTTPS
-      - "traefik.http.routers.gmgestionale-web.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
-      - "traefik.http.routers.gmgestionale-web.entrypoints=web"
-      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
-      - "traefik.http.routers.gmgestionale-web.middlewares=redirect-to-https"
-      # Router HTTPS: serve tutto (SPA + API) con certificati Let's Encrypt
-      - "traefik.http.routers.gmgestionale-web-secure.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
-      - "traefik.http.routers.gmgestionale-web-secure.entrypoints=websecure"
-      - "traefik.http.routers.gmgestionale-web-secure.tls=true"
-      - "traefik.http.routers.gmgestionale-web-secure.tls.certresolver=le"
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
     security_opt:
       - no-new-privileges:true
+    labels:
+      - "traefik.enable=true"
+      # HTTPS router
+      - "traefik.http.routers.gestionale.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
+      - "traefik.http.routers.gestionale.entrypoints=websecure"
+      - "traefik.http.routers.gestionale.tls.certresolver=myresolver"
+      - "traefik.http.services.gestionale.loadbalancer.server.port=3001"
+      # HTTP -> HTTPS redirect
+      - "traefik.http.routers.gestionale-http.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
+      - "traefik.http.routers.gestionale-http.entrypoints=web"
+      - "traefik.http.routers.gestionale-http.middlewares=redirect-https"
+      - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
     networks:
-      - proxy
-
-networks:
-  proxy:
-    driver: bridge
+      - gestionale_net
 
 volumes:
   uploads_data:
-    driver: local
   database_data:
-    driver: local
-  traefik-certs:
-    driver: local
+  traefik_letsencrypt:
+
+networks:
+  gestionale_net:
+    driver: bridge
