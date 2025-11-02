@@ -47,10 +47,8 @@ export default function WebhookSetupWizard({ onComplete, onClose }: WebhookSetup
         toast.success('Copiato negli appunti!');
     };
     
-    // Ottieni URL backend dal window
-    const backendUrl = window.location.hostname === 'localhost' 
-        ? 'http://localhost:3001' 
-        : window.location.origin;
+    // Ottieni URL backend dalla stessa origine (evita hardcode di localhost)
+    const backendUrl = window.location.origin;
     
     const fullWebhookUrl = `${webhookUrl || backendUrl}/api/emails/webhook/brevo`;
     
