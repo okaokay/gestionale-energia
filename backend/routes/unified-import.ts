@@ -1142,12 +1142,15 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                     }
                 }
 
-                processed++;
-                if (processed % batchSize === 0) {
-                    activeImports[importId].progress.progress = Math.min(95, Math.floor(10 + (processed / records.length) * 85));
-                }
             } catch (err: any) {
                 activeImports[importId].result.errors.push({ row: rowNum, error: err?.message || 'Errore generico' });
+            }
+
+            // Incrementa i processati anche se la riga ha generato errore,
+            // in modo che le statistiche riflettano tutte le righe tentate
+            processed++;
+            if (processed % batchSize === 0) {
+                activeImports[importId].progress.progress = Math.min(95, Math.floor(10 + (processed / records.length) * 85));
             }
         }
 
