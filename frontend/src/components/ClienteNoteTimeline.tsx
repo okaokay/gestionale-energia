@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { api } from '@/services/api';
 import toast from 'react-hot-toast';
 import {
     StickyNote,
@@ -64,18 +65,9 @@ export default function ClienteNoteTimeline({ clienteId, clienteTipo }: Props) {
     
     const loadNote = async () => {
         try {
-            const token = localStorage.getItem('token');
             const tipoPath = clienteTipo === 'privato' ? 'privati' : 'aziende';
-            
-            const response = await fetch(`http://localhost:3001/api/note/cliente/${tipoPath}/${clienteId}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                setNote(result.data);
-            }
+            const { data } = await api.get(`/note/cliente/${tipoPath}/${clienteId}`);
+            if (data?.success) setNote(data.data);
         } catch (error) {
             toast.error('Errore caricamento note');
         } finally {
@@ -90,23 +82,12 @@ export default function ClienteNoteTimeline({ clienteId, clienteTipo }: Props) {
         }
         
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:3001/api/note', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    ...formData,
-                    cliente_id: clienteId,
-                    cliente_tipo: clienteTipo
-                })
+            const { data } = await api.post('/note', {
+                ...formData,
+                cliente_id: clienteId,
+                cliente_tipo: clienteTipo
             });
-            
-            const result = await response.json();
-            
-            if (result.success) {
+            if (data?.success) {
                 toast.success('✅ Nota aggiunta!');
                 setShowAddModal(false);
                 setFormData({
@@ -125,11 +106,7 @@ export default function ClienteNoteTimeline({ clienteId, clienteTipo }: Props) {
     
     const handleTogglePin = async (id: number) => {
         try {
-            const token = localStorage.getItem('token');
-            await fetch(`http://localhost:3001/api/note/${id}/pin`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            await api.post(`/note/${id}/pin`);
             loadNote();
         } catch (error) {
             toast.error('Errore');
@@ -138,11 +115,7 @@ export default function ClienteNoteTimeline({ clienteId, clienteTipo }: Props) {
     
     const handleToggleComplete = async (id: number) => {
         try {
-            const token = localStorage.getItem('token');
-            await fetch(`http://localhost:3001/api/note/${id}/complete`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            await api.post(`/note/${id}/complete`);
             loadNote();
         } catch (error) {
             toast.error('Errore');
@@ -153,11 +126,7 @@ export default function ClienteNoteTimeline({ clienteId, clienteTipo }: Props) {
         if (!confirm('Eliminare questa nota?')) return;
         
         try {
-            const token = localStorage.getItem('token');
-            await fetch(`http://localhost:3001/api/note/${id}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            await api.delete(`/note/${id}`);
             toast.success('Nota eliminata');
             loadNote();
         } catch (error) {
