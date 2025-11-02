@@ -506,15 +506,15 @@ async function insertContrattoLuce(record: Record<string, string>, clienteId: st
     const id = randomUUID();
     if (dryRun) return id;
 
-    const numero_contratto = record.numero_contratto || record.contratto_luce_numero || record.numero_contratto_luce || null;
+    let numero_contratto = record.numero_contratto || record.contratto_luce_numero || record.numero_contratto_luce || null;
     let pod = record.pod || record.contratto_luce_pod || (record as any).pod_pdr || null;
-    const fornitore = record.fornitore || record.contratto_luce_fornitore_precedente || (record as any).fornitore_luce || null;
+    let fornitore = record.fornitore || record.contratto_luce_fornitore_precedente || (record as any).fornitore_luce || null;
     const data_attivazione_raw = record.data_attivazione || record.contratto_luce_data_inizio || (record as any).data_attivazione_luce || null;
     const data_scadenza_raw = record.data_scadenza || record.contratto_luce_data_fine || record.contratto_luce_data_scadenza || (record as any).data_scadenza_luce || null;
     const prezzo_energia_raw = record.prezzo_energia || record.contratto_luce_prezzo_energia || (record as any).prezzo_energia_luce || null;
     const data_attivazione = normalizeDate(data_attivazione_raw);
-    const data_scadenza = normalizeDate(data_scadenza_raw);
-    const prezzo_energia = normalizeNumber(prezzo_energia_raw);
+    let data_scadenza = normalizeDate(data_scadenza_raw);
+    let prezzo_energia = normalizeNumber(prezzo_energia_raw);
     const stato_csv = (record.stato || record.stato_contratto || (record as any)['stato contratto luce'] || record.stato_contratto_luce || null);
 
     // Determina il nome della colonna di scadenza presente nel DB
@@ -525,6 +525,20 @@ async function insertContrattoLuce(record: Record<string, string>, clienteId: st
     const clientCol = (clienteType === 'azienda')
         ? (colsAvailable.includes('cliente_azienda_id') ? 'cliente_azienda_id' : (colsAvailable.includes('cliente_id') ? 'cliente_id' : 'cliente_privato_id'))
         : (colsAvailable.includes('cliente_privato_id') ? 'cliente_privato_id' : (colsAvailable.includes('cliente_id') ? 'cliente_id' : 'cliente_azienda_id'));
+
+    // Verifica esistenza FK cliente per evitare errori opachi
+    try {
+        if (clientCol === 'cliente_privato_id' || (clienteType === 'privato' && clientCol === 'cliente_id')) {
+            const chk = await pool.query('SELECT 1 FROM clienti_privati WHERE id = $1 LIMIT 1', [clienteId]);
+            if (!chk.rows || chk.rows.length === 0) throw new Error('cliente_privato_id inesistente');
+        } else {
+            const chk = await pool.query('SELECT 1 FROM clienti_aziende WHERE id = $1 LIMIT 1', [clienteId]);
+            if (!chk.rows || chk.rows.length === 0) throw new Error('cliente_azienda_id inesistente');
+        }
+    } catch (e) {
+        // Propaga errore specifico per essere mostrato nel risultato import
+        throw new Error(`FK cliente mancante: ${(e as Error).message}`);
+    }
 
     // Valida created_by: se l'utente non esiste su questo DB, evita violazioni FK
     let createdBySafe: string | null = null;
@@ -559,6 +573,33 @@ async function insertContrattoLuce(record: Record<string, string>, clienteId: st
         pod = numero_contratto;
         const idx = columns.indexOf('pod');
         if (idx >= 0) values[idx] = pod;
+    }
+
+    // Fallback per colonne obbligatorie nei DB più rigidi
+    if (!numero_contratto) {
+        numero_contratto = pod || `AUTO-${id.slice(0, 8)}`;
+        const idx = columns.indexOf('numero_contratto');
+        if (idx >= 0) values[idx] = numero_contratto;
+    }
+    if (!pod) {
+        pod = `AUTO-${id.slice(0, 8)}`;
+        const idx = columns.indexOf('pod');
+        if (idx >= 0) values[idx] = pod;
+    }
+    if (!fornitore) {
+        fornitore = 'non_specificato';
+        const idx = columns.indexOf('fornitore');
+        if (idx >= 0) values[idx] = fornitore;
+    }
+    if (!data_scadenza) {
+        data_scadenza = data_attivazione || new Date().toISOString().slice(0, 10);
+        const idx = columns.indexOf(scadenzaCol);
+        if (idx >= 0) values[idx] = data_scadenza;
+    }
+    if (colsAvailable.includes('prezzo_energia') && (prezzo_energia === null || prezzo_energia === undefined)) {
+        prezzo_energia = 0;
+        const idx = columns.indexOf('prezzo_energia');
+        if (idx >= 0) values[idx] = prezzo_energia;
     }
 
     const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
@@ -671,15 +712,15 @@ async function insertContrattoGas(record: Record<string, string>, clienteId: str
     const id = randomUUID();
     if (dryRun) return id;
 
-    const numero_contratto = record.numero_contratto || record.contratto_gas_numero || record.numero_contratto_gas || null;
+    let numero_contratto = record.numero_contratto || record.contratto_gas_numero || record.numero_contratto_gas || null;
     let pdr = record.pdr || record.contratto_gas_pdr || (record as any).pod_pdr || null;
-    const fornitore = record.fornitore || record.contratto_gas_fornitore_precedente || (record as any).fornitore_gas || null;
+    let fornitore = record.fornitore || record.contratto_gas_fornitore_precedente || (record as any).fornitore_gas || null;
     const data_attivazione_raw = record.data_attivazione || record.contratto_gas_data_inizio || (record as any).data_attivazione_gas || null;
     const data_scadenza_raw = record.data_scadenza || record.contratto_gas_data_fine || record.contratto_gas_data_scadenza || (record as any).data_scadenza_gas || null;
     const prezzo_gas_raw = record.prezzo_gas || record.contratto_gas_prezzo_gas || (record as any).prezzo_gas_gas || null;
     const data_attivazione = normalizeDate(data_attivazione_raw);
-    const data_scadenza = normalizeDate(data_scadenza_raw);
-    const prezzo_gas = normalizeNumber(prezzo_gas_raw);
+    let data_scadenza = normalizeDate(data_scadenza_raw);
+    let prezzo_gas = normalizeNumber(prezzo_gas_raw);
     const stato_csv = (record.stato || record.stato_contratto || (record as any)['stato contratto gas'] || record.stato_contratto_gas || null);
 
     const scadenzaCol = await getScadenzaColumn('contratti_gas');
@@ -688,6 +729,19 @@ async function insertContrattoGas(record: Record<string, string>, clienteId: str
     const clientCol = (clienteType === 'azienda')
         ? (colsAvailable.includes('cliente_azienda_id') ? 'cliente_azienda_id' : (colsAvailable.includes('cliente_id') ? 'cliente_id' : 'cliente_privato_id'))
         : (colsAvailable.includes('cliente_privato_id') ? 'cliente_privato_id' : (colsAvailable.includes('cliente_id') ? 'cliente_id' : 'cliente_azienda_id'));
+
+    // Verifica esistenza FK cliente per evitare errori opachi
+    try {
+        if (clientCol === 'cliente_privato_id' || (clienteType === 'privato' && clientCol === 'cliente_id')) {
+            const chk = await pool.query('SELECT 1 FROM clienti_privati WHERE id = $1 LIMIT 1', [clienteId]);
+            if (!chk.rows || chk.rows.length === 0) throw new Error('cliente_privato_id inesistente');
+        } else {
+            const chk = await pool.query('SELECT 1 FROM clienti_aziende WHERE id = $1 LIMIT 1', [clienteId]);
+            if (!chk.rows || chk.rows.length === 0) throw new Error('cliente_azienda_id inesistente');
+        }
+    } catch (e) {
+        throw new Error(`FK cliente mancante: ${(e as Error).message}`);
+    }
 
     // Valida created_by: se l'utente non esiste su questo DB, evita violazioni FK
     let createdBySafe: string | null = null;
@@ -708,6 +762,33 @@ async function insertContrattoGas(record: Record<string, string>, clienteId: str
         pdr = numero_contratto;
         const idx = columns.indexOf('pdr');
         if (idx >= 0) values[idx] = pdr;
+    }
+
+    // Fallback per colonne obbligatorie nei DB più rigidi
+    if (!numero_contratto) {
+        numero_contratto = pdr || `AUTO-${id.slice(0, 8)}`;
+        const idx = columns.indexOf('numero_contratto');
+        if (idx >= 0) values[idx] = numero_contratto;
+    }
+    if (!pdr) {
+        pdr = `AUTO-${id.slice(0, 8)}`;
+        const idx = columns.indexOf('pdr');
+        if (idx >= 0) values[idx] = pdr;
+    }
+    if (!fornitore) {
+        fornitore = 'non_specificato';
+        const idx = columns.indexOf('fornitore');
+        if (idx >= 0) values[idx] = fornitore;
+    }
+    if (!data_scadenza) {
+        data_scadenza = data_attivazione || new Date().toISOString().slice(0, 10);
+        const idx = columns.indexOf(scadenzaCol);
+        if (idx >= 0) values[idx] = data_scadenza;
+    }
+    if (colsAvailable.includes('prezzo_gas') && (prezzo_gas === null || prezzo_gas === undefined)) {
+        prezzo_gas = 0;
+        const idx = columns.indexOf('prezzo_gas');
+        if (idx >= 0) values[idx] = prezzo_gas;
     }
 
     if (colsAvailable.includes('prezzo_gas')) {
