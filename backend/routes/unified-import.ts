@@ -47,10 +47,27 @@ const activeImports: Record<string, {
 // Rileva le colonne presenti in una tabella (SQLite)
 async function getTableColumns(tableName: string): Promise<string[]> {
     try {
-        const res = await pool.query<{ name: string }>(`PRAGMA table_info(${tableName})`);
+        // Usa SELECT su pragma_table_info per massima compatibilità
+        const res = await pool.query<{ name: string }>(`SELECT name FROM pragma_table_info('${tableName}')`);
         return (res.rows || []).map(r => String((r as any).name)).filter(Boolean);
     } catch {
         return [];
+    }
+}
+
+// Mappa nome->tipo delle colonne
+async function getTableColumnTypes(tableName: string): Promise<Record<string, string>> {
+    try {
+        const res = await pool.query<{ name: string; type: string }>(`SELECT name, type FROM pragma_table_info('${tableName}')`);
+        const out: Record<string, string> = {};
+        for (const r of res.rows || []) {
+            const name = String((r as any).name || '').trim();
+            const type = String((r as any).type || '').trim().toUpperCase();
+            if (name) out[name] = type;
+        }
+        return out;
+    } catch {
+        return {};
     }
 }
 
@@ -244,6 +261,7 @@ async function insertClientePrivato(record: Record<string, string>, createdBy: s
     const iban = (record.iban || '').trim() || null;
 
     const colsAvailable = await getTableColumns('clienti_privati');
+    const colTypes = await getTableColumnTypes('clienti_privati');
     const allFieldMap: Record<string, any> = {
         id,
         nome,
@@ -277,8 +295,32 @@ async function insertClientePrivato(record: Record<string, string>, createdBy: s
     const values: any[] = [];
     for (const [col, val] of Object.entries(allFieldMap)) {
         if (col === 'id' || colsAvailable.includes(col)) {
+            // Coercizione per evitare datatype mismatch
+            const t = (colTypes[col] || '').toUpperCase();
+            let v = val;
+            if (v !== null && v !== undefined) {
+                if (/^(INTEGER|INT|BIGINT|SMALLINT)$/.test(t)) {
+                    const num = normalizeNumber(v);
+                    v = num === null ? null : num;
+                } else if (/^(REAL|FLOAT|DOUBLE)$/.test(t)) {
+                    const num = normalizeNumber(v);
+                    v = num === null ? null : num;
+                } else if (/^(NUMERIC|DECIMAL)/.test(t)) {
+                    const num = normalizeNumber(v);
+                    v = num === null ? null : num;
+                } else if (/^(BOOLEAN)$/.test(t)) {
+                    const s = String(v).trim().toLowerCase();
+                    v = (s === '1' || s === 'true' || s === 'si' || s === 'sì' || s === 'yes') ? 1 : (s === '0' || s === 'false' || s === 'no') ? 0 : null;
+                } else if (/^(DATE|DATETIME|TIMESTAMP)$/.test(t)) {
+                    const d = normalizeDate(String(v));
+                    v = d || null;
+                } else {
+                    // TEXT/VARCHAR: lascia come stringa
+                    v = (v === null ? null : String(v));
+                }
+            }
             columns.push(col);
-            values.push(val);
+            values.push(v);
         }
     }
 

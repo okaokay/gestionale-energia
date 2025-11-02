@@ -34,7 +34,7 @@ export default function ContractCompileManualModal({ templates, onClose, onSucce
         try {
             const token = localStorage.getItem('token');
             const tipo = selectedClientType === 'domestico' ? 'privato' : 'azienda';
-            const response = await axios.get(`http://localhost:3001/api/clienti?tipo=${tipo}&limit=200`, {
+            const response = await axios.get(`/api/clienti?tipo=${tipo}&limit=200`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const clientiData = response.data.data || response.data || [];
@@ -80,7 +80,7 @@ export default function ContractCompileManualModal({ templates, onClose, onSucce
             });
 
             const response = await axios.post(
-                'http://localhost:3001/api/ai/extract-multiple',
+                '/api/ai/extract-multiple',
                 formDataUpload,
                 {
                     headers: {
@@ -301,7 +301,7 @@ export default function ContractCompileManualModal({ templates, onClose, onSucce
             });
 
             const response = await axios.post(
-                'http://localhost:3001/api/contratti-compilazione/create-manual',
+                '/api/contratti-compilazione/create-manual',
                 payload,
                 { headers: { Authorization: `Bearer ${token}` } }
             );

@@ -75,7 +75,22 @@ export const pool = {
                 return Promise.resolve({ rows: [] as T[], rowCount: result.changes });
             }
         } catch (error) {
-            console.error('❌ Errore query SQLite:', error);
+            // Log esteso: mostra SQL e parametri per debug "datatype mismatch"
+            try {
+                // Prova a ricostruire la query con placeholder convertiti come sopra
+                let printableQuery = text;
+                for (let i = params.length; i >= 1; i--) {
+                    printableQuery = printableQuery.replace(new RegExp(`\\$${i}`, 'g'), '?');
+                }
+                printableQuery = printableQuery.replace(/NOW\(\)/gi, "datetime('now')");
+                printableQuery = printableQuery.replace(/ILIKE/gi, 'LIKE');
+                printableQuery = printableQuery.replace(/NOW\(\)\s*-\s*INTERVAL\s+'(\d+)\s+days?'/gi, "datetime('now', '-$1 days')");
+                console.error('❌ Errore query SQLite:', error);
+                console.error('   ↳ SQL:', printableQuery);
+                console.error('   ↳ Params:', params);
+            } catch {
+                console.error('❌ Errore query SQLite:', error);
+            }
             return Promise.reject(error);
         }
     }
