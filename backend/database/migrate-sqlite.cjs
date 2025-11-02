@@ -169,6 +169,50 @@ async function runMigration() {
         `);
         
         console.log('✅ Tabelle contratti create');
+
+        // Colonne aggiuntive per compatibilità con le API contratti
+        const addCols = [
+            // contratti_luce
+            { table: 'contratti_luce', name: 'data_inizio', sql: 'ALTER TABLE contratti_luce ADD COLUMN data_inizio TEXT' },
+            { table: 'contratti_luce', name: 'data_fine', sql: 'ALTER TABLE contratti_luce ADD COLUMN data_fine TEXT' },
+            { table: 'contratti_luce', name: 'note', sql: 'ALTER TABLE contratti_luce ADD COLUMN note TEXT' },
+            { table: 'contratti_luce', name: 'data_stipula', sql: 'ALTER TABLE contratti_luce ADD COLUMN data_stipula TEXT' },
+            { table: 'contratti_luce', name: 'agente', sql: 'ALTER TABLE contratti_luce ADD COLUMN agente TEXT' },
+            { table: 'contratti_luce', name: 'nome_offerta', sql: 'ALTER TABLE contratti_luce ADD COLUMN nome_offerta TEXT' },
+            { table: 'contratti_luce', name: 'validita_offerta', sql: 'ALTER TABLE contratti_luce ADD COLUMN validita_offerta TEXT' },
+            { table: 'contratti_luce', name: 'commodity', sql: 'ALTER TABLE contratti_luce ADD COLUMN commodity TEXT' },
+            { table: 'contratti_luce', name: 'procedure', sql: 'ALTER TABLE contratti_luce ADD COLUMN procedure TEXT' },
+            { table: 'contratti_luce', name: 'pdp', sql: 'ALTER TABLE contratti_luce ADD COLUMN pdp TEXT' },
+            { table: 'contratti_luce', name: 'tipo_offerta', sql: 'ALTER TABLE contratti_luce ADD COLUMN tipo_offerta TEXT' },
+            { table: 'contratti_luce', name: 'updated_at', sql: "ALTER TABLE contratti_luce ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP" },
+
+            // contratti_gas
+            { table: 'contratti_gas', name: 'data_inizio', sql: 'ALTER TABLE contratti_gas ADD COLUMN data_inizio TEXT' },
+            { table: 'contratti_gas', name: 'data_fine', sql: 'ALTER TABLE contratti_gas ADD COLUMN data_fine TEXT' },
+            { table: 'contratti_gas', name: 'note', sql: 'ALTER TABLE contratti_gas ADD COLUMN note TEXT' },
+            { table: 'contratti_gas', name: 'data_stipula', sql: 'ALTER TABLE contratti_gas ADD COLUMN data_stipula TEXT' },
+            { table: 'contratti_gas', name: 'agente', sql: 'ALTER TABLE contratti_gas ADD COLUMN agente TEXT' },
+            { table: 'contratti_gas', name: 'nome_offerta', sql: 'ALTER TABLE contratti_gas ADD COLUMN nome_offerta TEXT' },
+            { table: 'contratti_gas', name: 'validita_offerta', sql: 'ALTER TABLE contratti_gas ADD COLUMN validita_offerta TEXT' },
+            { table: 'contratti_gas', name: 'commodity', sql: 'ALTER TABLE contratti_gas ADD COLUMN commodity TEXT' },
+            { table: 'contratti_gas', name: 'procedure', sql: 'ALTER TABLE contratti_gas ADD COLUMN procedure TEXT' },
+            { table: 'contratti_gas', name: 'pdp', sql: 'ALTER TABLE contratti_gas ADD COLUMN pdp TEXT' },
+            { table: 'contratti_gas', name: 'tipo_offerta', sql: 'ALTER TABLE contratti_gas ADD COLUMN tipo_offerta TEXT' },
+            { table: 'contratti_gas', name: 'updated_at', sql: "ALTER TABLE contratti_gas ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP" }
+        ];
+
+        for (const col of addCols) {
+            try {
+                db.exec(col.sql);
+                console.log(`   ✅ Aggiunta colonna ${col.table}.${col.name}`);
+            } catch (e) {
+                if (typeof e.message === 'string' && e.message.includes('duplicate column name')) {
+                    console.log(`   ⚠️  ${col.table}.${col.name} già presente, skip`);
+                } else {
+                    console.log(`   ⚠️  Impossibile aggiungere ${col.table}.${col.name}:`, e.message || e);
+                }
+            }
+        }
         
         // Tabella offerte
         db.exec(`
