@@ -645,6 +645,56 @@ router.delete('/:tipo/:id', authorize('admin', 'super_admin'), async (req: Reque
 });
 
 /**
+ * POST /api/clienti/repair-ids
+ * Ripara clienti con ID vuoto o non valido assegnando un nuovo UUID
+ * Ritorna conteggio e anteprima degli elementi aggiornati
+ */
+router.post('/repair-ids', authorize('admin', 'super_admin'), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const repaired: { tipo: 'privato' | 'azienda'; oldId: string | null; newId: string; nome: string }[] = [];
+
+        // PRIVATI con id vuoto
+        const privatiInvalid = await pool.query(
+            `SELECT id, nome, cognome FROM clienti_privati WHERE id IS NULL OR id = ''`
+        );
+
+        for (const row of privatiInvalid.rows) {
+            const oldId = (row as any).id || '';
+            const newId = randomUUID();
+            // Aggiorna l'ID
+            await pool.query(`UPDATE clienti_privati SET id = ? WHERE id IS NULL OR id = ''`, [newId]);
+            repaired.push({ tipo: 'privato', oldId: oldId || null, newId, nome: `${(row as any).nome || ''} ${(row as any).cognome || ''}`.trim() });
+        }
+
+        // AZIENDE con id vuoto
+        const aziendeInvalid = await pool.query(
+            `SELECT id, ragione_sociale FROM clienti_aziende WHERE id IS NULL OR id = ''`
+        );
+
+        for (const row of aziendeInvalid.rows) {
+            const oldId = (row as any).id || '';
+            const newId = randomUUID();
+            await pool.query(`UPDATE clienti_aziende SET id = ? WHERE id IS NULL OR id = ''`, [newId]);
+            repaired.push({ tipo: 'azienda', oldId: oldId || null, newId, nome: (row as any).ragione_sociale || '' });
+        }
+
+        // Conteggio finale
+        const report = {
+            success: true,
+            message: repaired.length > 0 ? 'ID clienti riparati con successo' : 'Nessun cliente con ID non valido trovato',
+            data: {
+                count: repaired.length,
+                dettagli: repaired.slice(0, 50) // limita output
+            }
+        };
+
+        res.json(report);
+    } catch (error) {
+        next(error);
+    }
+});
+
+/**
  * POST /api/clienti/import
  * Importa clienti da file CSV o Excel
  * Supporta campi opzionali - l'import avviene anche con dati parziali

@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { clientiAPI } from '../services/api';
+import { clientiAPI, contrattiAPI, storicoAPI } from '../services/api';
 import { useAuthStore } from '../store/authStore';
 import { useRefreshStore } from '../store/refreshStore';
 import toast from 'react-hot-toast';
@@ -113,8 +113,10 @@ export default function ClientiPage() {
     const [showAssegnaAgenteModal, setShowAssegnaAgenteModal] = useState(false);
     const [clientePerAssegnazione, setClientePerAssegnazione] = useState<any>(null);
     
-    // Stati contratti per dropdown
-    const [contrattiStati, setContrattiStati] = useState<{[key: string]: {luce?: string, gas?: string}}>({});
+    // Stati contratti per dropdown (mappa idContratto -> stato)
+    const [contrattiStati, setContrattiStati] = useState<{[contractId: string]: string}>({});
+    // Dettagli contratti per cliente (mappa tipo_idCliente -> array contratti)
+    const [contrattiDettagli, setContrattiDettagli] = useState<{[clienteKey: string]: any[]}>({});
     
     // Filtri
     const [filters, setFilters] = useState<FilterState>({
@@ -159,6 +161,56 @@ export default function ClientiPage() {
             loadClienti();
         }
     }, [filters]);
+
+    // 🔄 Quando cambia la lista clienti, carica i contratti per ciascun cliente visibile (solo per Super Admin)
+    useEffect(() => {
+        // Mappa stati DB -> etichette umane coerenti con trigger backend
+        const statoToLabel = (s: string) => {
+            const map: Record<string, string> = {
+                'in_compilazione': 'In compilazione',
+                'documenti_da_validare': 'Documenti da validare',
+                'documenti_da_correggere': 'Documenti da correggere',
+                'precheck_ko': 'Precheck KO',
+                'credit_check_ko': 'Credit KO',
+                'in_attesa_di_postalizzazione_lettera': 'In attesa',
+                'da_attivare': 'Da attivare',
+                'attivo': 'Attivo',
+                'chiusa': 'Chiusa'
+            };
+            return map[s] || s;
+        };
+
+        const loadContrattiVisibili = async () => {
+            if (!isSuperAdmin || clienti.length === 0) return;
+            try {
+                const updates: {[k: string]: any[]} = {};
+                const statoById: {[k: string]: string} = {};
+                await Promise.all(
+                    clienti
+                        .filter((c: any) => ((c.contratti_luce || 0) + (c.contratti_gas || 0)) > 0)
+                        .map(async (c: any) => {
+                            const key = `${c.tipo}_${c.id}`;
+                            // Evita richieste duplicate se già caricati
+                            if (contrattiDettagli[key]?.length) return;
+                            const res = await contrattiAPI.getByCliente(c.tipo, String(c.id));
+                            const arr = (res.data?.data || []) as any[];
+                            updates[key] = arr;
+                            arr.forEach(ct => { statoById[String(ct.id)] = statoToLabel(ct.stato || ''); });
+                        })
+                );
+                if (Object.keys(updates).length > 0) {
+                    setContrattiDettagli(prev => ({ ...prev, ...updates }));
+                }
+                if (Object.keys(statoById).length > 0) {
+                    setContrattiStati(prev => ({ ...prev, ...statoById }));
+                }
+            } catch (err) {
+                console.error('Errore caricamento contratti visibili:', err);
+            }
+        };
+        loadContrattiVisibili();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [clienti, isSuperAdmin]);
     
     // 🔄 Ricarica quando il refreshKey cambia (triggato da altre pagine)
     useEffect(() => {
@@ -317,6 +369,16 @@ export default function ClientiPage() {
         
         // 2. Aggiorna lo stato del contratto
         await contrattiAPI.update(tipoContratto, contrattoId, { stato: nuovoStato });
+        // Aggiorna stato locale per riflettere la modifica immediatamente
+        setContrattiStati(prev => ({ ...prev, [contrattoId]: nuovoStato }));
+        // Aggiorna il dettaglio del contratto nella mappa locale
+        const key = `${clientePerStato.tipo}_${clientePerStato.id}`;
+        if (contrattiDettagli[key]) {
+            setContrattiDettagli(prev => ({
+                ...prev,
+                [key]: prev[key].map(ct => ct.id === contrattoId ? { ...ct, stato: nuovoStato } : ct)
+            }));
+        }
         
         // 3. Registra nello storico
         const formData = new FormData();
@@ -339,6 +401,7 @@ export default function ClientiPage() {
             // Reset dei dati durante il caricamento per evitare visualizzazioni inconsistenti
             setClienti([]);
             setContrattiStati({});
+            setContrattiDettagli({});
             console.log('🔄 loadClienti chiamato - timestamp:', new Date().toISOString());
             
             const response = await clientiAPI.getAll({ 
@@ -399,18 +462,7 @@ export default function ClientiPage() {
             }
             
             setClienti(filtered);
-            
-            // Inizializza stati contratti
-            const statiContratti: {[key: string]: {luce?: string, gas?: string}} = {};
-            filtered.forEach((cliente: any) => {
-                const clienteKey = `${cliente.tipo}_${cliente.id}`;
-                statiContratti[clienteKey] = {
-                    luce: cliente.stato_contratto_luce || undefined,
-                    gas: cliente.stato_contratto_gas || undefined
-                };
-            });
-            setContrattiStati(statiContratti);
-            
+
         } catch (error) {
             toast.error('Errore caricamento clienti');
         } finally {
@@ -1011,7 +1063,7 @@ export default function ClientiPage() {
                                 e.stopPropagation();
                                 handleCallCliente(cliente);
                             }}
-                            className="p-2 hover:bg-green-100 rounded-lg transition-colors text-green-600"
+                            className="p-2 hover:bg-green-100 rounded-lg transition-colors text-green-600 hidden"
                             title="Chiama"
                         >
                             <PhoneCall size={18} />
@@ -1037,7 +1089,7 @@ export default function ClientiPage() {
                                 e.stopPropagation();
                                 handleWhatsAppCliente(cliente);
                             }}
-                            className="p-2 hover:bg-green-100 rounded-lg transition-colors text-green-600"
+                            className="p-2 hover:bg-green-100 rounded-lg transition-colors text-green-600 hidden"
                             title="WhatsApp"
                         >
                             <MessageCircle size={18} />
@@ -1164,7 +1216,7 @@ export default function ClientiPage() {
                 {(cliente.telefono_principale || cliente.telefono) && (
                     <button
                         onClick={() => handleCallCliente(cliente)}
-                        className="p-1.5 hover:bg-green-100 rounded-lg transition-colors text-green-600"
+                        className="p-1.5 hover:bg-green-100 rounded-lg transition-colors text-green-600 hidden"
                         title="Chiama"
                     >
                         <PhoneCall size={18} />
@@ -1182,7 +1234,7 @@ export default function ClientiPage() {
                 {(cliente.telefono_principale || cliente.telefono) && (
                     <button
                         onClick={() => handleWhatsAppCliente(cliente)}
-                        className="p-1.5 hover:bg-green-100 rounded-lg transition-colors text-green-600"
+                        className="p-1.5 hover:bg-green-100 rounded-lg transition-colors text-green-600 hidden"
                         title="WhatsApp"
                     >
                         <MessageCircle size={18} />
@@ -1866,16 +1918,16 @@ export default function ClientiPage() {
                                                     className="w-4 h-4"
                                                 />
                                             </th>
-                                            <th className="w-16 px-1 py-2 text-center text-xs font-semibold text-gray-700 uppercase" title="Qualità Dati">Q</th>
+                                            <th className="w-16 px-1 py-2 text-center text-xs font-semibold text-gray-700 uppercase hidden" title="Qualità Dati">Q</th>
                                             <th className="w-20 px-1 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Tipo</th>
-                                            <th className="w-24 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase truncate">Cod.</th>
+                                            <th className="w-24 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase truncate hidden">Cod.</th>
                 <th className="w-48 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Nome/Azienda</th>
                                             <th className="w-32 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase truncate">CF/P.IVA</th>
                                             <th className="w-20 px-1 py-2 text-center text-xs font-semibold text-gray-700 uppercase" title="Contratti">⚡🔥</th>
                                             <th className="w-32 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Agente</th>
                                             {/* 🔐 STATO: Solo Super Admin */}
                                             {isSuperAdmin && (
-                                                <th className="w-32 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Stato</th>
+                                                <th className="w-40 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Stato</th>
                                             )}
                                             <th className="w-16 px-1 py-2 text-center text-xs font-semibold text-gray-700 uppercase">Azioni</th>
                                         </tr>
@@ -1907,7 +1959,7 @@ export default function ClientiPage() {
                                                     className="w-4 h-4"
                                                 />
                                             </td>
-                                            <td className="px-1 py-2" title={cliente.incomplete_data ? `Dati incompleti: ${(cliente.missing_fields && JSON.parse(cliente.missing_fields || '[]').join(', ')) || 'Campi mancanti'}` : `Dati completi - Score: ${cliente.data_quality_score || 100}%`}>
+                                            <td className="px-1 py-2 hidden" title={cliente.incomplete_data ? `Dati incompleti: ${(cliente.missing_fields && JSON.parse(cliente.missing_fields || '[]').join(', ')) || 'Campi mancanti'}` : `Dati completi - Score: ${cliente.data_quality_score || 100}%`}>
                                                 <div className="flex items-center justify-center">
                                                     <span className={`w-3 h-3 rounded-full ${cliente.incomplete_data ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></span>
                                                 </div>
@@ -1921,7 +1973,7 @@ export default function ClientiPage() {
                                                     {cliente.tipo === 'privato' ? <User size={10} /> : <Building2 size={10} />}
                                                 </span>
                                             </td>
-                                            <td className="px-2 py-2 text-xs font-mono text-indigo-600 font-semibold truncate" title={cliente.codice_cliente}>
+                                            <td className="px-2 py-2 text-xs font-mono text-indigo-600 font-semibold truncate hidden" title={cliente.codice_cliente}>
                                                 {cliente.codice_cliente || '-'}
                                             </td>
                 <td className="px-2 py-2 text-sm font-medium text-gray-900 truncate" title={formatDisplayName(cliente)}>
@@ -1983,78 +2035,46 @@ export default function ClientiPage() {
                                             {isSuperAdmin && (
                                                 <td className="px-2 py-2">
                                                     <div className="flex flex-col gap-1">
-                                                        {/* Mostra select LUCE solo se esistono contratti luce */}
-                                                        {(cliente.contratti_luce || 0) > 0 && (
-                                                          <select
-                                                            value={contrattiStati[`${cliente.tipo}_${cliente.id}`]?.luce || ""}
-                                                            onChange={(e) => {
-                                                              if (e.target.value) {
-                                                                // Aggiorna immediatamente lo stato locale
-                                                                const clienteKey = `${cliente.tipo}_${cliente.id}`;
-                                                                setContrattiStati(prev => ({
-                                                                  ...prev,
-                                                                  [clienteKey]: {
-                                                                    ...prev[clienteKey],
-                                                                    luce: e.target.value
-                                                                  }
-                                                                }));
-                                                                handleChangeStato(cliente.id, cliente.tipo as 'privato' | 'azienda', e.target.value, 'luce');
-                                                              }
-                                                            }}
-                                                            className="w-full text-xs border rounded px-1 py-1 focus:ring-1 bg-gray-50 border-gray-300 text-gray-700 truncate"
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            title="Stato contratto LUCE"
-                                                          >
-                                                            <option value="" disabled>Stato contratto LUCE...</option>
-                                                            <option value="In compilazione">Compilazione</option>
-                                                            <option value="Documenti da validare">Da validare</option>
-                                                            <option value="Documenti da correggere">Da correggere</option>
-                                                            <option value="Precheck KO">Precheck KO</option>
-                                                            <option value="credit check ko">Credit KO</option>
-                                                            <option value="in attesa di postalizzazione lettera">In attesa</option>
-                                                            <option value="Da attivare">✅ Da attivare</option>
-                                                            <option value="Attivo">🟢 Attivo</option>
-                                                            <option value="chiusa">✅ Chiusa</option>
-                                                          </select>
-                                                        )}
-                                                        {/* Mostra select GAS solo se esistono contratti gas */}
-                                                        {(cliente.contratti_gas || 0) > 0 && (
-                                                          <select
-                                                            value={contrattiStati[`${cliente.tipo}_${cliente.id}`]?.gas || ""}
-                                                            onChange={(e) => {
-                                                              if (e.target.value) {
-                                                                // Aggiorna immediatamente lo stato locale
-                                                                const clienteKey = `${cliente.tipo}_${cliente.id}`;
-                                                                setContrattiStati(prev => ({
-                                                                  ...prev,
-                                                                  [clienteKey]: {
-                                                                    ...prev[clienteKey],
-                                                                    gas: e.target.value
-                                                                  }
-                                                                }));
-                                                                handleChangeStato(cliente.id, cliente.tipo as 'privato' | 'azienda', e.target.value, 'gas');
-                                                              }
-                                                            }}
-                                                            className="w-full text-xs border rounded px-1 py-1 focus:ring-1 bg-gray-50 border-gray-300 text-gray-700 truncate"
-                                                            onClick={(e) => e.stopPropagation()}
-                                                            title="Stato contratto GAS"
-                                                          >
-                                                            <option value="" disabled>Stato contratto GAS...</option>
-                                                            <option value="In compilazione">Compilazione</option>
-                                                            <option value="Documenti da validare">Da validare</option>
-                                                            <option value="Documenti da correggere">Da correggere</option>
-                                                            <option value="Precheck KO">Precheck KO</option>
-                                                            <option value="credit check ko">Credit KO</option>
-                                                            <option value="in attesa di postalizzazione lettera">In attesa</option>
-                                                            <option value="Da attivare">✅ Da attivare</option>
-                                                            <option value="Attivo">🟢 Attivo</option>
-                                                            <option value="chiusa">✅ Chiusa</option>
-                                                          </select>
-                                                        )}
-                                                        {/* Se non ci sono contratti di nessun tipo, mostra un placeholder */}
-                                                        {(cliente.contratti_luce || 0) === 0 && (cliente.contratti_gas || 0) === 0 && (
-                                                          <span className="text-xs text-gray-500">Nessun contratto</span>
-                                                        )}
+                                                        {(() => {
+                                                            const key = `${cliente.tipo}_${cliente.id}`;
+                                                            const contratti = contrattiDettagli[key] || [];
+                                                            if (contratti.length === 0) {
+                                                                return (
+                                                                    <span className="text-xs text-gray-500">Nessun contratto</span>
+                                                                );
+                                                            }
+                                                            return contratti.map((ct: any, idx: number) => (
+                                                                <div key={ct.id || `ct-${idx}`} className="flex items-center gap-2">
+                                                                    <span className="text-[10px] text-gray-600 truncate" title={`Contratto ${ct.tipo_contratto?.toUpperCase()} • ${ct.numero_contratto || ct.pod || ct.pdr || ''}`}>
+                                                                        {ct.tipo_contratto === 'luce' ? 'LUCE' : 'GAS'} • {ct.numero_contratto || ct.pod || ct.pdr || `#${idx+1}`}
+                                                                    </span>
+                                                                    <select
+                                                                        value={contrattiStati[ct.id] || ''}
+                                                                        onChange={(e) => {
+                                                                            const nuovo = e.target.value;
+                                                                            if (!nuovo) return;
+                                                                            setContrattiStati(prev => ({ ...prev, [ct.id]: nuovo }));
+                                                                            // Apri la modale di cambio stato (flusso originale)
+                                                                            handleChangeStato(cliente.id, cliente.tipo, nuovo, ct.tipo_contratto);
+                                                                        }}
+                                                                        className="flex-1 text-xs border rounded px-1 py-1 focus:ring-1 bg-gray-50 border-gray-300 text-gray-700 truncate"
+                                                                        onClick={(e) => e.stopPropagation()}
+                                                                        title={`Stato contratto ${ct.tipo_contratto?.toUpperCase()}`}
+                                                                    >
+                                                                        <option value="" disabled>Seleziona stato...</option>
+                                                                        <option value="In compilazione">In compilazione</option>
+                                                                        <option value="Documenti da validare">Documenti da validare</option>
+                                                                        <option value="Documenti da correggere">Documenti da correggere</option>
+                                                                        <option value="Precheck KO">Precheck KO</option>
+                                                                        <option value="Credit KO">Credit KO</option>
+                                                                        <option value="In attesa">In attesa</option>
+                                                                        <option value="Da attivare">Da attivare</option>
+                                                                        <option value="Attivo">Attivo</option>
+                                                                        <option value="Chiusa">Chiusa</option>
+                                                                    </select>
+                                                                </div>
+                                                            ));
+                                                        })()}
                                                     </div>
                                                 </td>
                                             )}

@@ -129,6 +129,20 @@ export default function CreateContrattoModal({ onClose, onSuccess, clienteId, cl
             return;
         }
         
+        // Validazione minima lato client
+        if (!formData.numero_contratto?.trim()) {
+            toast.error('Inserisci il numero contratto');
+            return;
+        }
+        if (tipoContratto === 'luce' && !formData.pod?.trim()) {
+            toast.error('Inserisci il POD');
+            return;
+        }
+        if (tipoContratto === 'gas' && !formData.pdr?.trim()) {
+            toast.error('Inserisci il PDR');
+            return;
+        }
+        
         setLoading(true);
 
         try {
@@ -147,6 +161,20 @@ export default function CreateContrattoModal({ onClose, onSuccess, clienteId, cl
                 dataToSend.cliente_privato_id = null;
             }
 
+            // Normalizza campi numerici e date
+            if (dataToSend.prezzo_energia !== undefined) {
+                const v = String(dataToSend.prezzo_energia).trim();
+                dataToSend.prezzo_energia = v ? parseFloat(v.replace(',', '.')) : null;
+            }
+            if (dataToSend.prezzo_gas !== undefined) {
+                const v = String(dataToSend.prezzo_gas).trim();
+                dataToSend.prezzo_gas = v ? parseFloat(v.replace(',', '.')) : null;
+            }
+            // Se le date sono vuote, invia null (evita stringhe vuote)
+            dataToSend.data_attivazione = dataToSend.data_attivazione?.trim() || null;
+            dataToSend.data_scadenza = dataToSend.data_scadenza?.trim() || null;
+            dataToSend.data_stipula = dataToSend.data_stipula?.trim() || null;
+
             // Rimuovi campi non necessari in base al tipo di contratto
             if (tipoContratto === 'luce') {
                 delete dataToSend.pdr;
@@ -155,14 +183,23 @@ export default function CreateContrattoModal({ onClose, onSuccess, clienteId, cl
                 delete dataToSend.pod;
                 delete dataToSend.prezzo_energia;
             }
+            
+            // Log di debug del payload
+            console.debug('📤 Invio contratto', tipoContratto, dataToSend);
 
             await contrattiAPI.create(tipoContratto, dataToSend);
             toast.success(`✅ Contratto ${tipoContratto.toUpperCase()} creato con successo!`);
             onSuccess();
             onClose();
         } catch (error: any) {
-            console.error('❌ Errore creazione contratto:', error);
-            toast.error(error.response?.data?.message || 'Errore durante la creazione del contratto');
+            console.error('❌ Errore creazione contratto:', {
+                status: error?.response?.status,
+                data: error?.response?.data,
+                message: error?.message
+            });
+            const serverMsg = error?.response?.data?.message || error?.response?.data?.error;
+            const status = error?.response?.status ? ` (HTTP ${error.response.status})` : '';
+            toast.error(serverMsg ? `Errore: ${serverMsg}${status}` : 'Errore durante la creazione del contratto');
         } finally {
             setLoading(false);
         }
