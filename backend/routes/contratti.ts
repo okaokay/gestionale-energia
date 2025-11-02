@@ -5,7 +5,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { pool } from '../config/database';
 import { authenticate, authorize } from '../middleware/auth';
-import { validateContrattoLuce, validateContrattoGas, validateUUID } from '../middleware/validators';
+import { validateContrattoLuce, validateContrattoGas, validateFlexibleId } from '../middleware/validators';
 
 const router = Router();
 router.use(authenticate);
@@ -275,7 +275,7 @@ router.post('/gas', authorize('operatore', 'admin', 'super_admin'), async (req: 
  * PUT /api/contratti/luce/:id
  * Aggiorna contratto luce
  */
-router.put('/luce/:id', authorize('operatore', 'admin', 'super_admin'), validateUUID('id'), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/luce/:id', authorize('operatore', 'admin', 'super_admin'), validateFlexibleId('id'), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const updates: string[] = [];
         const values: any[] = [];
@@ -417,7 +417,7 @@ router.put('/luce/:id', authorize('operatore', 'admin', 'super_admin'), validate
  * PUT /api/contratti/gas/:id
  * Aggiorna un contratto gas
  */
-router.put('/gas/:id', authorize('operatore', 'admin', 'super_admin'), validateUUID('id'), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/gas/:id', authorize('operatore', 'admin', 'super_admin'), validateFlexibleId('id'), async (req: Request, res: Response, next: NextFunction) => {
     try {
         const updates: string[] = [];
         const values: any[] = [];

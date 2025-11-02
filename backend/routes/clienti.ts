@@ -703,14 +703,31 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
         let errors = 0;
         const errorDetails: any[] = [];
 
-        // Helper: converte stringhe vuote in null
+        // Helper: pulisce stringhe da HTML e placeholder comuni, converte in null se vuoto
         const normalizeValue = (value: any): any => {
-            if (value === undefined || value === null || value === '') {
+            if (value === undefined || value === null) {
                 return null;
             }
             if (typeof value === 'string') {
-                const trimmed = value.trim();
-                return trimmed === '' ? null : trimmed;
+                let s = value.trim();
+                if (s === '') return null;
+
+                // Rimuove tag HTML comuni e spazi non-breaking
+                s = s
+                    .replace(/<br\s*\/?>/gi, ' ')
+                    .replace(/<\/(div|span|p)>/gi, ' ')
+                    .replace(/<(div|span|p)[^>]*>/gi, ' ')
+                    .replace(/&nbsp;/gi, ' ');
+
+                // Normalizza spazi multipli
+                s = s.replace(/\s+/g, ' ').trim();
+
+                if (s === '') return null;
+                const lower = s.toLowerCase();
+                // Tratta placeholder comuni e residui di tag come null
+                const placeholders = new Set(['null', 'undefined', '-', 'n/a', 'na', 'vuoto', 'manca', 'missing', 'div', 'span', 'br', 'p']);
+                if (placeholders.has(lower)) return null;
+                return s;
             }
             return value;
         };
@@ -1680,14 +1697,30 @@ router.post('/woocommerce-import', upload.single('file'), async (req: Request, r
         let errors = 0;
         const errorDetails: any[] = [];
 
-        // Helper: converte stringhe vuote in null
+        // Helper: pulisce stringhe da HTML e placeholder comuni, converte in null se vuoto
         const normalizeValue = (value: any): any => {
-            if (value === undefined || value === null || value === '') {
+            if (value === undefined || value === null) {
                 return null;
             }
             if (typeof value === 'string') {
-                const trimmed = value.trim();
-                return trimmed === '' ? null : trimmed;
+                let s = value.trim();
+                if (s === '') return null;
+
+                // Rimuove tag HTML comuni e spazi non-breaking
+                s = s
+                    .replace(/<br\s*\/?>/gi, ' ')
+                    .replace(/<\/(div|span|p)>/gi, ' ')
+                    .replace(/<(div|span|p)[^>]*>/gi, ' ')
+                    .replace(/&nbsp;/gi, ' ');
+
+                // Normalizza spazi multipli
+                s = s.replace(/\s+/g, ' ').trim();
+
+                if (s === '') return null;
+                const lower = s.toLowerCase();
+                const placeholders = new Set(['null', 'undefined', '-', 'n/a', 'na', 'vuoto', 'manca', 'missing', 'div', 'span', 'br', 'p']);
+                if (placeholders.has(lower)) return null;
+                return s;
             }
             return value;
         };

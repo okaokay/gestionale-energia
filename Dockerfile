@@ -21,10 +21,11 @@ RUN npx tsc -p tsconfig.json
 FROM node:20 AS production
 WORKDIR /app
 
-# Installa SQLite3, Python e strumenti di build necessari per better-sqlite3
+# Installa SQLite3, Python, curl e strumenti di build necessari per better-sqlite3
 RUN apt-get update && apt-get install -y \
     sqlite3 \
     python3 \
+    curl \
     make \
     g++ \
     pkg-config \

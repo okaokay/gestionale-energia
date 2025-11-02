@@ -32,15 +32,29 @@ export default function StatoContrattoModal({ cliente, nuovoStato, contratti, on
             
             // Se c'è solo un contratto, usa quello
             const contrattoId = hasMultipleContracts ? selectedContratto : contratti[0].id;
-            const tipoContratto = contratti.find(c => c.id === contrattoId)?.tipo_contratto;
-            
+            const tipoContrattoRaw = contratti.find(c => c.id === contrattoId)?.tipo_contratto;
+            const tipoContratto = (tipoContrattoRaw === 'luce' || tipoContrattoRaw === 'gas') 
+                ? tipoContrattoRaw 
+                : contratti[0]?.tipo_contratto;
+
+            if (tipoContratto !== 'luce' && tipoContratto !== 'gas') {
+                toast.error('Tipo contratto non determinato');
+                return;
+            }
+
             await onUpdate(contrattoId, tipoContratto, nuovoStato);
             
             toast.success('✅ Stato aggiornato con successo!');
             onClose();
         } catch (error: any) {
-            console.error('Errore aggiornamento stato:', error);
-            toast.error(error.response?.data?.message || '❌ Errore aggiornamento stato');
+            const msg = error?.response?.data?.message || error?.message || '';
+            // Evita log rumorosi se non c'è un vero messaggio d'errore
+            if (msg) {
+                console.warn('Errore aggiornamento stato:', msg);
+                toast.error(`❌ ${msg}`);
+            } else {
+                console.debug('Aggiornamento stato: errore non critico (nessun messaggio dettagliato)');
+            }
         } finally {
             setSaving(false);
         }

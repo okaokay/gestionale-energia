@@ -91,7 +91,25 @@ export default function UnifiedImportModal({ isOpen, onClose, onImportComplete }
 
         <div className="bg-blue-50 border-l-4 border-blue-500 p-3 mb-4 text-sm text-blue-700">
           <div className="flex items-center gap-2 font-semibold mb-1"><AlertCircle size={18} /> Istruzioni rapide</div>
-          <div>Carica un CSV con colonne tipo_record, dati cliente e contratti (luce/gas). Il sistema può rilevare automaticamente il tipo record.</div>
+          <div>
+            Carica un file <strong>CSV</strong> con colonne <code>tipo_record</code>, dati cliente e contratti (luce/gas).
+            Il sistema può rilevare automaticamente il tipo record.
+          </div>
+          <div className="mt-1">
+            Suggerito: usa <code>combined_unified.csv</code> generato dallo script di unione, oppure un CSV che includa
+            almeno <code>codice_fiscale</code>/<code>email_principale</code> per i clienti e <code>pod</code>/<code>pdr</code> o <code>commodity</code> per i contratti.
+          </div>
+          <div className="mt-2">
+            <a
+              href="/docs/import"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 text-xs"
+              title="Apri documentazione Import Unificato"
+            >
+              Apri documentazione
+            </a>
+          </div>
         </div>
 
         <div className="space-y-3 mb-4">

@@ -41,6 +41,8 @@ export default function CreateContrattoModal({ onClose, onSuccess, clienteId, cl
     const [loading, setLoading] = useState(false);
     const [agenti, setAgenti] = useState<any[]>([]);
     const [loadingAgenti, setLoadingAgenti] = useState(true);
+    const [contrattiEsistenti, setContrattiEsistenti] = useState<any[]>([]);
+    const [duplicateError, setDuplicateError] = useState<string>('');
     
     const [formData, setFormData] = useState({
         // Campi comuni
@@ -53,6 +55,7 @@ export default function CreateContrattoModal({ onClose, onSuccess, clienteId, cl
         data_scadenza: '',
         stato: 'In compilazione',
         note: '',
+        indirizzo_fornitura: '', // Nuovo campo per distinguere gli appartamenti
         
         // Campi specifici luce
         pod: '',
@@ -70,26 +73,62 @@ export default function CreateContrattoModal({ onClose, onSuccess, clienteId, cl
         validita_offerta: ''
     });
 
-    // Carica lista agenti all'apertura della modale
+    // Carica lista agenti e contratti esistenti all'apertura della modale
     useEffect(() => {
-        const loadAgenti = async () => {
+        const loadData = async () => {
             try {
                 setLoadingAgenti(true);
-                const response = await agentiAPI.getAll();
-                setAgenti(response.data.data || []);
+                
+                // Carica agenti
+                const agentiResponse = await agentiAPI.getAll();
+                setAgenti(agentiResponse.data.data || []);
+                
+                // Carica contratti esistenti per validazione duplicati
+                const contrattiResponse = await contrattiAPI.getByCliente(clienteTipo, clienteId);
+                setContrattiEsistenti(contrattiResponse.data.data || []);
+                
             } catch (error) {
-                console.error('Errore caricamento agenti:', error);
-                toast.error('Errore nel caricamento degli agenti');
+                console.error('Errore caricamento dati:', error);
+                toast.error('Errore nel caricamento dei dati');
             } finally {
                 setLoadingAgenti(false);
             }
         };
 
-        loadAgenti();
-    }, []);
+        loadData();
+    }, [clienteId, clienteTipo]);
+
+    // Funzione per validare duplicati POD/PDR
+    const validateDuplicate = (value: string, type: 'pod' | 'pdr') => {
+        if (!value.trim()) {
+            setDuplicateError('');
+            return;
+        }
+
+        const isDuplicate = contrattiEsistenti.some(contratto => {
+            if (type === 'pod') {
+                return contratto.tipo_contratto === 'luce' && contratto.pod === value.trim();
+            } else {
+                return contratto.tipo_contratto === 'gas' && contratto.pdr === value.trim();
+            }
+        });
+
+        if (isDuplicate) {
+            setDuplicateError(`${type.toUpperCase()} già esistente per questo cliente`);
+        } else {
+            setDuplicateError('');
+        }
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        
+        // Verifica duplicati prima dell'invio
+        if (duplicateError) {
+            toast.error('Impossibile salvare: ' + duplicateError);
+            return;
+        }
+        
         setLoading(true);
 
         try {
@@ -200,14 +239,28 @@ export default function CreateContrattoModal({ onClose, onSuccess, clienteId, cl
                             <input
                                 type="text"
                                 value={tipoContratto === 'luce' ? formData.pod : formData.pdr}
-                                onChange={(e) => setFormData({
-                                    ...formData,
-                                    [tipoContratto === 'luce' ? 'pod' : 'pdr']: e.target.value
-                                })}
-                                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono"
+                                onChange={(e) => {
+                                    const value = e.target.value;
+                                    setFormData({
+                                        ...formData,
+                                        [tipoContratto === 'luce' ? 'pod' : 'pdr']: value
+                                    });
+                                    // Validazione duplicati in tempo reale
+                                    validateDuplicate(value, tipoContratto === 'luce' ? 'pod' : 'pdr');
+                                }}
+                                className={`w-full p-2 border rounded-lg focus:ring-2 font-mono ${
+                                    duplicateError 
+                                        ? 'border-red-500 focus:ring-red-500' 
+                                        : 'border-gray-300 focus:ring-blue-500'
+                                }`}
                                 placeholder={tipoContratto === 'luce' ? 'es. IT001E12345678' : 'es. 12345678901234'}
                                 required
                             />
+                            {duplicateError && (
+                                <p className="text-red-500 text-sm mt-1 flex items-center gap-1">
+                                    ⚠️ {duplicateError}
+                                </p>
+                            )}
                         </div>
 
                         <div>
@@ -247,6 +300,20 @@ export default function CreateContrattoModal({ onClose, onSuccess, clienteId, cl
                                 className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                                 placeholder={tipoContratto === 'luce' ? 'es. Power, Elettricità' : 'es. Gas, Metano'}
                             />
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Indirizzo Fornitura</label>
+                            <input
+                                type="text"
+                                value={formData.indirizzo_fornitura}
+                                onChange={(e) => setFormData({ ...formData, indirizzo_fornitura: e.target.value })}
+                                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                placeholder="es. Via Roma 123, Appartamento 2A"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">
+                                Utile per distinguere forniture multiple dello stesso cliente
+                            </p>
                         </div>
 
                         <div>

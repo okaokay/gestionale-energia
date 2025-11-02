@@ -3,6 +3,7 @@ import multer from 'multer';
 import { randomUUID } from 'crypto';
 import { pool } from '../config/database';
 import path from 'path';
+import XLSX from 'xlsx';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -85,6 +86,50 @@ function parseCsvSimple(content: string) {
     return { headers, records };
 }
 
+// Ritorna il primo valore non vuoto tra le chiavi indicate
+function pickFirstNonEmpty(record: Record<string, any>, keys: string[]): string | null {
+    for (const k of keys) {
+        const v = record[k];
+        if (v !== undefined && v !== null) {
+            const s = String(v).trim();
+            if (s.length > 0) return s;
+        }
+    }
+    return null;
+}
+
+// Converte formati comuni di data in YYYY-MM-DD (se possibile)
+function normalizeDate(value: string | null): string | null {
+    if (!value) return null;
+    const s = value.trim();
+    // Se è già in formato ISO YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    // Formato italiano/Excel DD/MM/YYYY o D/M/YY
+    const m = s.match(/^([0-3]?\d)[\/\-]([0-1]?\d)[\/\-](\d{2}|\d{4})$/);
+    if (m) {
+        const dd = m[1].padStart(2, '0');
+        const mm = m[2].padStart(2, '0');
+        let yyyy = m[3];
+        if (yyyy.length === 2) {
+            // Heuristica: anni 00-69 -> 2000-2069, 70-99 -> 1970-1999
+            const yy = parseInt(yyyy, 10);
+            yyyy = String(yy >= 70 ? 1900 + yy : 2000 + yy);
+        }
+        return `${yyyy}-${mm}-${dd}`;
+    }
+    // Timestamp Excel seriale (numero di giorni dal 1899-12-30)
+    if (/^\d+$/.test(s)) {
+        const serial = parseInt(s, 10);
+        const epoch = new Date(Date.UTC(1899, 11, 30));
+        const d = new Date(epoch.getTime() + serial * 86400000);
+        const yyyy = d.getUTCFullYear();
+        const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const dd = String(d.getUTCDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    }
+    return s; // fallback: ritorna stringa originale
+}
+
 // Rileva dinamicamente il nome della colonna di scadenza
 // Alcuni DB hanno `data_scadenza`, altri `data_fine`.
 async function getScadenzaColumn(tableName: 'contratti_luce' | 'contratti_gas'): Promise<'data_scadenza' | 'data_fine'> {
@@ -123,6 +168,27 @@ async function findClientePrivatoId(record: Record<string, string>): Promise<str
     if (email) {
         const res = await pool.query<{ id: number | string }>('SELECT id FROM clienti_privati WHERE LOWER(TRIM(email_principale)) = $1 LIMIT 1', [email]);
         if (res.rows[0]?.id) return String(res.rows[0].id);
+    }
+    return null;
+}
+
+// Trova cliente azienda esistente per Partita IVA o Ragione Sociale
+async function findClienteAziendaId(record: Record<string, string>): Promise<string | null> {
+    const pivaRaw = record.partita_iva || (record as any).piva || null;
+    const rsRaw = record.ragione_sociale || (record as any).ragione || null;
+    const piva = pivaRaw ? String(pivaRaw).trim() : null;
+    const rs = rsRaw ? String(rsRaw).trim() : null;
+    if (piva) {
+        try {
+            const res = await pool.query<{ id: number | string }>('SELECT id FROM clienti_aziende WHERE TRIM(partita_iva) = $1 LIMIT 1', [piva]);
+            if (res.rows[0]?.id) return String(res.rows[0].id);
+        } catch {}
+    }
+    if (rs) {
+        try {
+            const res = await pool.query<{ id: number | string }>('SELECT id FROM clienti_aziende WHERE TRIM(ragione_sociale) = $1 LIMIT 1', [rs]);
+            if (res.rows[0]?.id) return String(res.rows[0].id);
+        } catch {}
     }
     return null;
 }
@@ -321,16 +387,115 @@ async function upsertClientePrivato(record: Record<string, string>, createdBy: s
     return { id: id || String((await pool.query<{ id: number }>(`SELECT last_insert_rowid() as id`)).rows?.[0]?.id), action: 'updated' };
 }
 
-async function insertContrattoLuce(record: Record<string, string>, clienteId: string, createdBy: string | null, dryRun: boolean): Promise<string> {
+// Inserisce azienda con mappatura dinamica sulle colonne disponibili
+async function insertClienteAzienda(record: Record<string, string>, createdBy: string | null, assignedAgentId: string | null, dryRun: boolean): Promise<string> {
+    if (dryRun) return randomUUID();
+    const id = randomUUID();
+    const cols = await getTableColumns('clienti_aziende');
+    const fieldMap: Record<string, any> = {
+        id,
+        ragione_sociale: (record.ragione_sociale || (record as any).ragione || '').trim() || null,
+        partita_iva: (record.partita_iva || (record as any).piva || '').trim() || null,
+        codice_fiscale: (record.codice_fiscale || '').trim() || null,
+        codice_cliente: (record.codice_cliente || '').trim() || null,
+        codice_ateco: (record.codice_ateco || '').trim() || null,
+        pec_aziendale: (record.pec || record.pec_aziendale || '').trim() || null,
+        codice_sdi: (record.codice_sdi || '').trim() || null,
+        via_sede_legale: (record.via || record.via_sede_legale || '').trim() || null,
+        civico_sede_legale: record.numero_civico || record.civico_sede_legale || null,
+        citta_sede_legale: (record.citta || record.citta_sede_legale || '').trim() || null,
+        cap_sede_legale: (record.cap || record.cap_sede_legale || '').trim() || null,
+        provincia_sede_legale: (record.provincia || record.provincia_sede_legale || '').trim() || null,
+        nome_referente: (record.nome_referente || '').trim() || null,
+        cognome_referente: (record.cognome_referente || '').trim() || null,
+        email_referente: (record.email_referente || record.email_principale || '').trim().toLowerCase() || null,
+        telefono_referente: (record.telefono_referente || '').trim() || null,
+        email_principale: (record.email_principale || '').trim().toLowerCase() || null,
+        consenso_marketing: (String(record.consenso_marketing || '').trim() === '1') ? 1 : 0,
+        news_letter: (String(record.news_letter || '').trim() === '1') ? 1 : 0,
+        utente_acquisizione: (record.utente_acquisizione || '').trim() || null,
+        note: (record.note || '').trim() || null,
+        assigned_agent_id: assignedAgentId || null,
+        created_by: createdBy || null,
+    };
+    const columns: string[] = [];
+    const values: any[] = [];
+    Object.entries(fieldMap).forEach(([k, v]) => {
+        if (k === 'id' || cols.includes(k)) {
+            columns.push(k);
+            values.push(v);
+        }
+    });
+    const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
+    await pool.query(`INSERT INTO clienti_aziende (${columns.join(', ')}) VALUES (${placeholders})`, values);
+    return id;
+}
+
+// Upsert azienda: aggiorna se trovata, altrimenti inserisce
+async function upsertClienteAzienda(record: Record<string, string>, createdBy: string | null, assignedAgentId: string | null, dryRun: boolean): Promise<{ id: string; action: 'inserted' | 'updated' | 'would_insert' | 'would_update' }> {
+    const existingId = await findClienteAziendaId(record);
+    if (existingId) {
+        if (dryRun) return { id: existingId, action: 'would_update' };
+        const cols = await getTableColumns('clienti_aziende');
+        const updates: Record<string, any> = {
+            ragione_sociale: (record.ragione_sociale || (record as any).ragione || '').trim() || null,
+            partita_iva: (record.partita_iva || (record as any).piva || '').trim() || null,
+            codice_fiscale: (record.codice_fiscale || '').trim() || null,
+            codice_cliente: (record.codice_cliente || '').trim() || null,
+            codice_ateco: (record.codice_ateco || '').trim() || null,
+            pec_aziendale: (record.pec || record.pec_aziendale || '').trim() || null,
+            codice_sdi: (record.codice_sdi || '').trim() || null,
+            via_sede_legale: (record.via || record.via_sede_legale || '').trim() || null,
+            civico_sede_legale: record.numero_civico || record.civico_sede_legale || null,
+            citta_sede_legale: (record.citta || record.citta_sede_legale || '').trim() || null,
+            cap_sede_legale: (record.cap || record.cap_sede_legale || '').trim() || null,
+            provincia_sede_legale: (record.provincia || record.provincia_sede_legale || '').trim() || null,
+            nome_referente: (record.nome_referente || '').trim() || null,
+            cognome_referente: (record.cognome_referente || '').trim() || null,
+            email_referente: (record.email_referente || record.email_principale || '').trim().toLowerCase() || null,
+            telefono_referente: (record.telefono_referente || '').trim() || null,
+            email_principale: (record.email_principale || '').trim().toLowerCase() || null,
+            consenso_marketing: (String(record.consenso_marketing || '').trim() === '1') ? 1 : 0,
+            news_letter: (String(record.news_letter || '').trim() === '1') ? 1 : 0,
+            utente_acquisizione: (record.utente_acquisizione || '').trim() || null,
+            note: (record.note || '').trim() || null,
+        };
+        const sets: string[] = [];
+        const params: any[] = [];
+        Object.entries(updates).forEach(([k, v]) => {
+            if (cols.includes(k) && v !== null) {
+                sets.push(`${k} = $${params.length + 1}`);
+                params.push(v);
+            }
+        });
+        if (assignedAgentId && cols.includes('assigned_agent_id')) {
+            sets.push(`assigned_agent_id = $${params.length + 1}`);
+            params.push(assignedAgentId);
+        }
+        if (createdBy && cols.includes('created_by')) {
+            sets.push(`created_by = $${params.length + 1}`);
+            params.push(createdBy);
+        }
+        if (sets.length > 0) {
+            params.push(existingId);
+            await pool.query(`UPDATE clienti_aziende SET ${sets.join(', ')} WHERE id = $${params.length}`, params);
+        }
+        return { id: existingId, action: 'updated' };
+    }
+    const newId = await insertClienteAzienda(record, createdBy, assignedAgentId, dryRun);
+    return { id: newId, action: dryRun ? 'would_insert' : 'inserted' };
+}
+
+async function insertContrattoLuce(record: Record<string, string>, clienteId: string, clienteType: 'privato' | 'azienda', createdBy: string | null, dryRun: boolean): Promise<string> {
     const id = randomUUID();
     if (dryRun) return id;
 
     const numero_contratto = record.numero_contratto || record.contratto_luce_numero || record.numero_contratto_luce || null;
-    const pod = record.pod || record.contratto_luce_pod || (record as any).pod_pdr || null;
-    const fornitore = record.fornitore || record.contratto_luce_fornitore_precedente || null;
-    const data_attivazione = record.data_attivazione || record.contratto_luce_data_inizio || null;
-    const data_scadenza = record.data_scadenza || record.contratto_luce_data_fine || record.contratto_luce_data_scadenza || null;
-    const prezzo_energia = record.prezzo_energia || record.contratto_luce_prezzo_energia || null;
+    let pod = record.pod || record.contratto_luce_pod || (record as any).pod_pdr || null;
+    const fornitore = record.fornitore || record.contratto_luce_fornitore_precedente || (record as any).fornitore_luce || null;
+    const data_attivazione = record.data_attivazione || record.contratto_luce_data_inizio || (record as any).data_attivazione_luce || null;
+    const data_scadenza = record.data_scadenza || record.contratto_luce_data_fine || record.contratto_luce_data_scadenza || (record as any).data_scadenza_luce || null;
+    const prezzo_energia = record.prezzo_energia || record.contratto_luce_prezzo_energia || (record as any).prezzo_energia_luce || null;
     const stato_csv = (record.stato || record.stato_contratto || (record as any)['stato contratto luce'] || record.stato_contratto_luce || null);
 
     // Determina il nome della colonna di scadenza presente nel DB
@@ -338,9 +503,12 @@ async function insertContrattoLuce(record: Record<string, string>, clienteId: st
 
     // Rileva colonne disponibili per gestire DB senza created_by/stato
     const colsAvailable = await getTableColumns('contratti_luce');
+    const clientCol = (clienteType === 'azienda')
+        ? (colsAvailable.includes('cliente_azienda_id') ? 'cliente_azienda_id' : (colsAvailable.includes('cliente_id') ? 'cliente_id' : 'cliente_privato_id'))
+        : (colsAvailable.includes('cliente_privato_id') ? 'cliente_privato_id' : (colsAvailable.includes('cliente_id') ? 'cliente_id' : 'cliente_azienda_id'));
 
-    const columns: string[] = ['id', 'cliente_privato_id', 'tipo_cliente', 'numero_contratto', 'pod', 'fornitore', 'data_attivazione', scadenzaCol];
-    const values: any[] = [id, clienteId, 'privato', numero_contratto, pod, fornitore, data_attivazione, data_scadenza];
+    const columns: string[] = ['id', clientCol, 'tipo_cliente', 'numero_contratto', 'pod', 'fornitore', 'data_attivazione', scadenzaCol];
+    const values: any[] = [id, clienteId, clienteType, numero_contratto, pod, fornitore, data_attivazione, data_scadenza];
 
     if (colsAvailable.includes('prezzo_energia')) {
         columns.push('prezzo_energia');
@@ -355,6 +523,13 @@ async function insertContrattoLuce(record: Record<string, string>, clienteId: st
         values.push(createdBy);
     }
     // Nota: evitiamo 'created_at' per compatibilità, se presente sarà gestito da default/trigger esterni
+
+    // Heuristica: se pod è assente ma numero_contratto sembra un POD, usa quello
+    if (!pod && numero_contratto && /^IT[0-9A-Z]{10,}$/.test(String(numero_contratto))) {
+        pod = numero_contratto;
+        const idx = columns.indexOf('pod');
+        if (idx >= 0) values[idx] = pod;
+    }
 
     const placeholders = values.map((_, i) => `$${i + 1}`).join(', ');
 
@@ -385,10 +560,19 @@ async function findContrattoLuceId(record: Record<string, string>, clienteId?: s
             let query = 'SELECT id FROM contratti_luce WHERE pod = $1';
             const params: any[] = [pod];
             if (clienteId) {
-                if (cols.includes('cliente_privato_id')) {
+                const hasPriv = cols.includes('cliente_privato_id');
+                const hasAz = cols.includes('cliente_azienda_id');
+                const hasGen = cols.includes('cliente_id');
+                if (hasPriv && hasAz) {
+                    query += ' AND (cliente_privato_id = $2 OR cliente_azienda_id = $2)';
+                    params.push(clienteId);
+                } else if (hasAz) {
+                    query += ' AND cliente_azienda_id = $2';
+                    params.push(clienteId);
+                } else if (hasPriv) {
                     query += ' AND cliente_privato_id = $2';
                     params.push(clienteId);
-                } else if (cols.includes('cliente_id')) {
+                } else if (hasGen) {
                     query += ' AND cliente_id = $2';
                     params.push(clienteId);
                 }
@@ -402,7 +586,7 @@ async function findContrattoLuceId(record: Record<string, string>, clienteId?: s
 }
 
 // Effettua UPSERT per contratto luce: se esiste aggiorna, altrimenti inserisce
-async function upsertContrattoLuce(record: Record<string, string>, clienteId: string, createdBy: string | null, dryRun: boolean): Promise<{ id: string; action: 'inserted' | 'updated' | 'would_insert' | 'would_update' }> {
+async function upsertContrattoLuce(record: Record<string, string>, clienteId: string, clienteType: 'privato' | 'azienda', createdBy: string | null, dryRun: boolean): Promise<{ id: string; action: 'inserted' | 'updated' | 'would_insert' | 'would_update' }> {
     const modeRaw = (record as any).modalita_import || '';
     const mode = String(modeRaw).toLowerCase();
     const shouldUpdate = mode === 'update' || mode === 'upsert';
@@ -412,15 +596,20 @@ async function upsertContrattoLuce(record: Record<string, string>, clienteId: st
         if (dryRun) return { id: existingId, action: 'would_update' };
 
         const numero_contratto = record.numero_contratto || record.contratto_luce_numero || record.numero_contratto_luce || null;
-        const pod = record.pod || record.contratto_luce_pod || (record as any).pod_pdr || null;
-        const fornitore = record.fornitore || record.contratto_luce_fornitore_precedente || null;
-        const data_attivazione = record.data_attivazione || record.contratto_luce_data_inizio || null;
-        const data_scadenza = record.data_scadenza || record.contratto_luce_data_fine || record.contratto_luce_data_scadenza || null;
-        const prezzo_energia = record.prezzo_energia || record.contratto_luce_prezzo_energia || null;
+        let pod = record.pod || record.contratto_luce_pod || (record as any).pod_pdr || null;
+        const fornitore = record.fornitore || record.contratto_luce_fornitore_precedente || (record as any).fornitore_luce || null;
+        const data_attivazione = record.data_attivazione || record.contratto_luce_data_inizio || (record as any).data_attivazione_luce || null;
+        const data_scadenza = record.data_scadenza || record.contratto_luce_data_fine || record.contratto_luce_data_scadenza || (record as any).data_scadenza_luce || null;
+        const prezzo_energia = record.prezzo_energia || record.contratto_luce_prezzo_energia || (record as any).prezzo_energia_luce || null;
         const stato_csv = (record.stato || record.stato_contratto || (record as any)['stato contratto luce'] || record.stato_contratto_luce || null);
 
         const scadenzaCol = await getScadenzaColumn('contratti_luce');
         const colsAvailable = await getTableColumns('contratti_luce');
+
+        // Heuristica: se pod è assente ma numero_contratto sembra un POD, usa quello
+        if (!pod && numero_contratto && /^IT[0-9A-Z]{10,}$/.test(String(numero_contratto))) {
+            pod = numero_contratto;
+        }
 
         const sets: string[] = [];
         const params: any[] = [];
@@ -441,28 +630,38 @@ async function upsertContrattoLuce(record: Record<string, string>, clienteId: st
     }
 
     // Fallback: inserisci
-    const newId = await insertContrattoLuce(record, clienteId, createdBy, dryRun);
+    const newId = await insertContrattoLuce(record, clienteId, clienteType, createdBy, dryRun);
     return { id: newId, action: dryRun ? 'would_insert' : 'inserted' };
 }
 
-async function insertContrattoGas(record: Record<string, string>, clienteId: string, createdBy: string | null, dryRun: boolean): Promise<string> {
+async function insertContrattoGas(record: Record<string, string>, clienteId: string, clienteType: 'privato' | 'azienda', createdBy: string | null, dryRun: boolean): Promise<string> {
     const id = randomUUID();
     if (dryRun) return id;
 
     const numero_contratto = record.numero_contratto || record.contratto_gas_numero || record.numero_contratto_gas || null;
-    const pdr = record.pdr || record.contratto_gas_pdr || (record as any).pod_pdr || null;
-    const fornitore = record.fornitore || record.contratto_gas_fornitore_precedente || null;
-    const data_attivazione = record.data_attivazione || record.contratto_gas_data_inizio || null;
-    const data_scadenza = record.data_scadenza || record.contratto_gas_data_fine || record.contratto_gas_data_scadenza || null;
-    const prezzo_gas = record.prezzo_gas || record.contratto_gas_prezzo_gas || null;
+    let pdr = record.pdr || record.contratto_gas_pdr || (record as any).pod_pdr || null;
+    const fornitore = record.fornitore || record.contratto_gas_fornitore_precedente || (record as any).fornitore_gas || null;
+    const data_attivazione = record.data_attivazione || record.contratto_gas_data_inizio || (record as any).data_attivazione_gas || null;
+    const data_scadenza = record.data_scadenza || record.contratto_gas_data_fine || record.contratto_gas_data_scadenza || (record as any).data_scadenza_gas || null;
+    const prezzo_gas = record.prezzo_gas || record.contratto_gas_prezzo_gas || (record as any).prezzo_gas_gas || null;
     const stato_csv = (record.stato || record.stato_contratto || (record as any)['stato contratto gas'] || record.stato_contratto_gas || null);
 
     const scadenzaCol = await getScadenzaColumn('contratti_gas');
 
     const colsAvailable = await getTableColumns('contratti_gas');
+    const clientCol = (clienteType === 'azienda')
+        ? (colsAvailable.includes('cliente_azienda_id') ? 'cliente_azienda_id' : (colsAvailable.includes('cliente_id') ? 'cliente_id' : 'cliente_privato_id'))
+        : (colsAvailable.includes('cliente_privato_id') ? 'cliente_privato_id' : (colsAvailable.includes('cliente_id') ? 'cliente_id' : 'cliente_azienda_id'));
 
-    const columns: string[] = ['id', 'cliente_privato_id', 'tipo_cliente', 'numero_contratto', 'pdr', 'fornitore', 'data_attivazione', scadenzaCol];
-    const values: any[] = [id, clienteId, 'privato', numero_contratto, pdr, fornitore, data_attivazione, data_scadenza];
+    const columns: string[] = ['id', clientCol, 'tipo_cliente', 'numero_contratto', 'pdr', 'fornitore', 'data_attivazione', scadenzaCol];
+    const values: any[] = [id, clienteId, clienteType, numero_contratto, pdr, fornitore, data_attivazione, data_scadenza];
+
+    // Heuristica: se pdr è assente ma numero_contratto sembra un PDR numerico, usa quello
+    if (!pdr && numero_contratto && /^[0-9]{11,16}$/.test(String(numero_contratto))) {
+        pdr = numero_contratto;
+        const idx = columns.indexOf('pdr');
+        if (idx >= 0) values[idx] = pdr;
+    }
 
     if (colsAvailable.includes('prezzo_gas')) {
         columns.push('prezzo_gas');
@@ -504,10 +703,19 @@ async function findContrattoGasId(record: Record<string, string>, clienteId?: st
             let query = 'SELECT id FROM contratti_gas WHERE pdr = $1';
             const params: any[] = [pdr];
             if (clienteId) {
-                if (cols.includes('cliente_privato_id')) {
+                const hasPriv = cols.includes('cliente_privato_id');
+                const hasAz = cols.includes('cliente_azienda_id');
+                const hasGen = cols.includes('cliente_id');
+                if (hasPriv && hasAz) {
+                    query += ' AND (cliente_privato_id = $2 OR cliente_azienda_id = $2)';
+                    params.push(clienteId);
+                } else if (hasAz) {
+                    query += ' AND cliente_azienda_id = $2';
+                    params.push(clienteId);
+                } else if (hasPriv) {
                     query += ' AND cliente_privato_id = $2';
                     params.push(clienteId);
-                } else if (cols.includes('cliente_id')) {
+                } else if (hasGen) {
                     query += ' AND cliente_id = $2';
                     params.push(clienteId);
                 }
@@ -521,7 +729,7 @@ async function findContrattoGasId(record: Record<string, string>, clienteId?: st
 }
 
 // Effettua UPSERT per contratto gas: se esiste aggiorna, altrimenti inserisce
-async function upsertContrattoGas(record: Record<string, string>, clienteId: string, createdBy: string | null, dryRun: boolean): Promise<{ id: string; action: 'inserted' | 'updated' | 'would_insert' | 'would_update' }> {
+async function upsertContrattoGas(record: Record<string, string>, clienteId: string, clienteType: 'privato' | 'azienda', createdBy: string | null, dryRun: boolean): Promise<{ id: string; action: 'inserted' | 'updated' | 'would_insert' | 'would_update' }> {
     const modeRaw = (record as any).modalita_import || '';
     const mode = String(modeRaw).toLowerCase();
     const shouldUpdate = mode === 'update' || mode === 'upsert';
@@ -531,15 +739,20 @@ async function upsertContrattoGas(record: Record<string, string>, clienteId: str
         if (dryRun) return { id: existingId, action: 'would_update' };
 
         const numero_contratto = record.numero_contratto || record.contratto_gas_numero || record.numero_contratto_gas || null;
-        const pdr = record.pdr || record.contratto_gas_pdr || (record as any).pod_pdr || null;
-        const fornitore = record.fornitore || record.contratto_gas_fornitore_precedente || null;
-        const data_attivazione = record.data_attivazione || record.contratto_gas_data_inizio || null;
-        const data_scadenza = record.data_scadenza || record.contratto_gas_data_fine || record.contratto_gas_data_scadenza || null;
-        const prezzo_gas = record.prezzo_gas || record.contratto_gas_prezzo_gas || null;
+        let pdr = record.pdr || record.contratto_gas_pdr || (record as any).pod_pdr || null;
+        const fornitore = record.fornitore || record.contratto_gas_fornitore_precedente || (record as any).fornitore_gas || null;
+        const data_attivazione = record.data_attivazione || record.contratto_gas_data_inizio || (record as any).data_attivazione_gas || null;
+        const data_scadenza = record.data_scadenza || record.contratto_gas_data_fine || record.contratto_gas_data_scadenza || (record as any).data_scadenza_gas || null;
+        const prezzo_gas = record.prezzo_gas || record.contratto_gas_prezzo_gas || (record as any).prezzo_gas_gas || null;
         const stato_csv = (record.stato || record.stato_contratto || (record as any)['stato contratto gas'] || record.stato_contratto_gas || null);
 
         const scadenzaCol = await getScadenzaColumn('contratti_gas');
         const colsAvailable = await getTableColumns('contratti_gas');
+
+        // Heuristica: se pdr è assente ma numero_contratto sembra un PDR numerico, usa quello
+        if (!pdr && numero_contratto && /^[0-9]{11,16}$/.test(String(numero_contratto))) {
+            pdr = numero_contratto;
+        }
 
         const sets: string[] = [];
         const params: any[] = [];
@@ -559,7 +772,7 @@ async function upsertContrattoGas(record: Record<string, string>, clienteId: str
         return { id: existingId, action: 'updated' };
     }
 
-    const newId = await insertContrattoGas(record, clienteId, createdBy, dryRun);
+    const newId = await insertContrattoGas(record, clienteId, clienteType, createdBy, dryRun);
     return { id: newId, action: dryRun ? 'would_insert' : 'inserted' };
 }
 
@@ -591,9 +804,10 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         const optionsRaw = req.body?.options || {};
         const options: ImportOptions = typeof optionsRaw === 'string' ? JSON.parse(optionsRaw) : (optionsRaw || {});
         const fileName = req.file?.originalname || 'file.csv';
-        const content = req.file ? req.file.buffer.toString('utf8') : (typeof req.body.file === 'string' ? req.body.file : '');
-        if (!content) {
-            return res.status(400).json({ success: false, message: 'File CSV mancante.' });
+        const fileBuffer = req.file?.buffer;
+        const contentStr = req.file ? req.file.buffer.toString('utf8') : (typeof req.body.file === 'string' ? req.body.file : '');
+        if (!fileBuffer && !contentStr) {
+            return res.status(400).json({ success: false, message: 'File mancante.' });
         }
 
         activeImports[importId] = {
@@ -615,9 +829,34 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             }
         };
 
-        // Parsing CSV
-        activeImports[importId].progress = { stage: 'parsing', progress: 5, message: 'Parsing CSV', startedAt: activeImports[importId].progress.startedAt };
-        const { headers, records } = parseCsvSimple(content);
+        // Parsing file (CSV o Excel)
+        activeImports[importId].progress = { stage: 'parsing', progress: 5, message: 'Parsing file', startedAt: activeImports[importId].progress.startedAt };
+        let headers: string[] = [];
+        let records: Array<Record<string, any>> = [];
+        const lowerName = fileName.toLowerCase();
+        if (lowerName.endsWith('.csv') || lowerName.endsWith('.txt')) {
+            const { headers: h, records: r } = parseCsvSimple(contentStr || '');
+            headers = h;
+            records = r;
+        } else if (lowerName.endsWith('.xls') || lowerName.endsWith('.xlsx')) {
+            try {
+                const wb = XLSX.read(fileBuffer as Buffer, { type: 'buffer' });
+                // Usa la prima sheet e includi valori vuoti
+                const sheetName = wb.SheetNames[0];
+                const ws = wb.Sheets[sheetName];
+                const json = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false });
+                records = json as Array<Record<string, any>>;
+                // Deriva intestazioni dalla prima riga se disponibile
+                headers = records.length > 0 ? Object.keys(records[0]) : [];
+            } catch (e: any) {
+                return res.status(400).json({ success: false, message: 'Errore parsing Excel: ' + (e?.message || 'Formato non valido') });
+            }
+        } else {
+            // Fallback: prova CSV
+            const { headers: h, records: r } = parseCsvSimple(contentStr || '');
+            headers = h;
+            records = r;
+        }
         activeImports[importId].result.totalRows = records.length;
 
         // Debug: colonne disponibili in clienti_privati/aziende
@@ -712,7 +951,17 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                     }
                     // Se nel record ci sono campi contratto luce/gas, inseriscili
                     if (rec.pod || rec.contratto_luce_pod || rec.numero_contratto_luce) {
-                        const up = await upsertContrattoLuce(rec, clienteId, createdBy || assignedUserId, !!options.dryRun);
+                        // Fallback data_attivazione (contratto luce)
+                        const actLuce = normalizeDate(pickFirstNonEmpty(rec, [
+                            'data_attivazione', 'contratto_luce_data_inizio', 'data_inizio', 'data_stipula'
+                        ]));
+                        if (!actLuce) {
+                            rec.data_attivazione = new Date().toISOString().slice(0, 10);
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: data_attivazione luce assente → impostata a oggi`);
+                        } else {
+                            rec.data_attivazione = actLuce;
+                        }
+                        const up = await upsertContrattoLuce(rec, clienteId, 'privato', createdBy || assignedUserId, !!options.dryRun);
                         if (up.action === 'inserted' || up.action === 'would_insert') {
                             activeImports[importId].result.inserted.contratti_luce++;
                         } else {
@@ -720,7 +969,17 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                         }
                     }
                     if (rec.pdr || rec.contratto_gas_pdr || rec.numero_contratto_gas) {
-                        const up = await upsertContrattoGas(rec, clienteId, createdBy || assignedUserId, !!options.dryRun);
+                        // Fallback data_attivazione (contratto gas)
+                        const actGas = normalizeDate(pickFirstNonEmpty(rec, [
+                            'data_attivazione', 'contratto_gas_data_inizio', 'data_inizio', 'data_stipula'
+                        ]));
+                        if (!actGas) {
+                            rec.data_attivazione = new Date().toISOString().slice(0, 10);
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: data_attivazione gas assente → impostata a oggi`);
+                        } else {
+                            rec.data_attivazione = actGas;
+                        }
+                        const up = await upsertContrattoGas(rec, clienteId, 'privato', createdBy || assignedUserId, !!options.dryRun);
                         if (up.action === 'inserted' || up.action === 'would_insert') {
                             activeImports[importId].result.inserted.contratti_gas++;
                         } else {
@@ -730,9 +989,23 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                 } else if (tipo === 'contratto_luce') {
                     let clienteId = await findClientePrivatoId(rec);
                     if (!clienteId) {
-                        // crea cliente minimo se mancante
-                        clienteId = await insertClientePrivato(rec, createdBy || assignedUserId, assignedUserId, !!options.dryRun);
-                        activeImports[importId].result.inserted.clienti_privati++;
+                        // prova con azienda
+                        clienteId = await findClienteAziendaId(rec);
+                    }
+                    if (!clienteId) {
+                        // se ci sono dati azienda in riga, upsert azienda invece di creare privato
+                        const hasAziendaData = !!pickFirstNonEmpty(rec, [
+                            'ragione_sociale', 'partita_iva', 'cliente_azienda_id', 'cliente_azienda_id_luce'
+                        ]);
+                        if (hasAziendaData) {
+                            const upAz = await upsertClienteAzienda(rec, createdBy || assignedUserId, assignedUserId, !!options.dryRun);
+                            clienteId = upAz.id;
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: cliente_azienda ${upAz.action} (${clienteId}) da contratto_luce`);
+                        } else {
+                            // crea cliente minimo privato se mancante
+                            clienteId = await insertClientePrivato(rec, createdBy || assignedUserId, assignedUserId, !!options.dryRun);
+                            activeImports[importId].result.inserted.clienti_privati++;
+                        }
                     }
                     // Aggiorna assegnazione agente anche su contratti, se disponibile
                     if (assignedUserId && !options.dryRun) {
@@ -747,7 +1020,23 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                         }
                     }
                     {
-                        const up = await upsertContrattoLuce(rec, clienteId, createdBy || assignedUserId, !!options.dryRun);
+                        // Fallback data_attivazione luce
+                        const actLuce = normalizeDate(pickFirstNonEmpty(rec, [
+                            'data_attivazione', 'contratto_luce_data_inizio', 'data_inizio', 'data_stipula'
+                        ]));
+                        if (!actLuce) {
+                            rec.data_attivazione = new Date().toISOString().slice(0, 10);
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: data_attivazione luce assente → impostata a oggi`);
+                        } else {
+                            rec.data_attivazione = actLuce;
+                        }
+                        // Se il clienteId appartiene ad azienda, tipo_cliente='azienda', altrimenti 'privato'
+                        let isAzienda = false;
+                        try {
+                            const r = await pool.query('SELECT 1 FROM clienti_aziende WHERE id = $1', [clienteId]);
+                            isAzienda = r.rowCount > 0;
+                        } catch {}
+                        const up = await upsertContrattoLuce(rec, clienteId, isAzienda ? 'azienda' : 'privato', createdBy || assignedUserId, !!options.dryRun);
                         if (up.action === 'inserted' || up.action === 'would_insert') {
                             activeImports[importId].result.inserted.contratti_luce++;
                         } else {
@@ -757,8 +1046,21 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                 } else if (tipo === 'contratto_gas') {
                     let clienteId = await findClientePrivatoId(rec);
                     if (!clienteId) {
-                        clienteId = await insertClientePrivato(rec, createdBy || assignedUserId, assignedUserId, !!options.dryRun);
-                        activeImports[importId].result.inserted.clienti_privati++;
+                        // prova con azienda
+                        clienteId = await findClienteAziendaId(rec);
+                    }
+                    if (!clienteId) {
+                        const hasAziendaData = !!pickFirstNonEmpty(rec, [
+                            'ragione_sociale', 'partita_iva', 'cliente_azienda_id', 'cliente_azienda_id_gas'
+                        ]);
+                        if (hasAziendaData) {
+                            const upAz = await upsertClienteAzienda(rec, createdBy || assignedUserId, assignedUserId, !!options.dryRun);
+                            clienteId = upAz.id;
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: cliente_azienda ${upAz.action} (${clienteId}) da contratto_gas`);
+                        } else {
+                            clienteId = await insertClientePrivato(rec, createdBy || assignedUserId, assignedUserId, !!options.dryRun);
+                            activeImports[importId].result.inserted.clienti_privati++;
+                        }
                     }
                     // Aggiorna assegnazione agente anche su contratti, se disponibile
                     if (assignedUserId && !options.dryRun) {
@@ -773,7 +1075,22 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                         }
                     }
                     {
-                        const up = await upsertContrattoGas(rec, clienteId, createdBy || assignedUserId, !!options.dryRun);
+                        // Fallback data_attivazione gas
+                        const actGas = normalizeDate(pickFirstNonEmpty(rec, [
+                            'data_attivazione', 'contratto_gas_data_inizio', 'data_inizio', 'data_stipula'
+                        ]));
+                        if (!actGas) {
+                            rec.data_attivazione = new Date().toISOString().slice(0, 10);
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: data_attivazione gas assente → impostata a oggi`);
+                        } else {
+                            rec.data_attivazione = actGas;
+                        }
+                        let isAzienda = false;
+                        try {
+                            const r = await pool.query('SELECT 1 FROM clienti_aziende WHERE id = $1', [clienteId]);
+                            isAzienda = r.rowCount > 0;
+                        } catch {}
+                        const up = await upsertContrattoGas(rec, clienteId, isAzienda ? 'azienda' : 'privato', createdBy || assignedUserId, !!options.dryRun);
                         if (up.action === 'inserted' || up.action === 'would_insert') {
                             activeImports[importId].result.inserted.contratti_gas++;
                         } else {
@@ -781,8 +1098,43 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                         }
                     }
                 } else if (tipo === 'cliente_azienda') {
-                    // TODO: estendere per aziende se necessario (simile a privati con tabella clienti_aziende)
-                    activeImports[importId].result.warnings.push(`Riga ${rowNum}: import clienti_azienda non implementato in questa versione`);
+                    // Upsert cliente azienda
+                    const upAz = await upsertClienteAzienda(rec, createdBy || assignedUserId, assignedUserId, !!options.dryRun);
+                    const aziendaId = upAz.id;
+                    if (upAz.action === 'inserted' || upAz.action === 'would_insert') {
+                        activeImports[importId].result.warnings.push(`Riga ${rowNum}: cliente_azienda inserito (${aziendaId})`);
+                    } else {
+                        activeImports[importId].result.warnings.push(`Riga ${rowNum}: cliente_azienda aggiornato (${aziendaId})`);
+                    }
+                    // Se nel record sono presenti dati contratto, gestisci contratti luce/gas associati all'azienda
+                    const hasLuce = !!pickFirstNonEmpty(rec, ['pod', 'numero_contratto', 'fornitore']) && (rec.tipo_contratto || '').toLowerCase() !== 'gas';
+                    const hasGas = !!pickFirstNonEmpty(rec, ['pdr', 'numero_contratto', 'fornitore']) && ((rec.tipo_contratto || '').toLowerCase() === 'gas' || !!rec.pdr);
+
+                    if (hasLuce) {
+                        const actLuce = normalizeDate(pickFirstNonEmpty(rec, [
+                            'data_attivazione', 'contratto_luce_data_inizio', 'data_inizio', 'data_stipula'
+                        ])) || new Date().toISOString().slice(0, 10);
+                        rec.data_attivazione = actLuce;
+                        const up = await upsertContrattoLuce(rec, aziendaId, 'azienda', createdBy || assignedUserId, !!options.dryRun);
+                        if (up.action === 'inserted' || up.action === 'would_insert') {
+                            activeImports[importId].result.inserted.contratti_luce++;
+                        } else {
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: contratto_luce azienda ${up.id} aggiornato (${up.action})`);
+                        }
+                    }
+
+                    if (hasGas) {
+                        const actGas = normalizeDate(pickFirstNonEmpty(rec, [
+                            'data_attivazione', 'contratto_gas_data_inizio', 'data_inizio', 'data_stipula'
+                        ])) || new Date().toISOString().slice(0, 10);
+                        rec.data_attivazione = actGas;
+                        const up = await upsertContrattoGas(rec, aziendaId, 'azienda', createdBy || assignedUserId, !!options.dryRun);
+                        if (up.action === 'inserted' || up.action === 'would_insert') {
+                            activeImports[importId].result.inserted.contratti_gas++;
+                        } else {
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: contratto_gas azienda ${up.id} aggiornato (${up.action})`);
+                        }
+                    }
                 }
 
                 processed++;

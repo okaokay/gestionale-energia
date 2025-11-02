@@ -87,8 +87,12 @@ export default function EmailMarketingPage() {
         setLoading(true);
         try {
             if (activeTab === 'campagne') {
-                const response = await emailAPI.getCampaigns();
-                setCampaigns(response.data.data || []);
+                // Carica campagne e anche i template, così il select ha dati
+                const campaignsResponse = await emailAPI.getCampaigns();
+                setCampaigns(campaignsResponse.data.data || []);
+
+                const templatesResponse = await emailAPI.getTemplates();
+                setTemplates(templatesResponse.data.data || []);
             } else if (activeTab === 'scadenze') {
                 const response = await contrattiAPI.getScadenze(90); // Carica 90 giorni
                 setScadenze(response.data.data || []);

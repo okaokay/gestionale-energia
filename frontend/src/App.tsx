@@ -21,6 +21,7 @@ import OffertePage from './pages/OffertePage';
 import OfferteDetailPage from './pages/OfferteDetailPage';
 import EmailMarketingPage from './pages/EmailMarketingPage';
 import ContabilitaPage from './pages/ContabilitaPage';
+import ImportDocsPage from './pages/ImportDocsPage';
 import Layout from './components/Layout';
 
 // Protected Route Component
@@ -79,6 +80,7 @@ function App() {
                                     <Route path="/offerte" element={<OffertePage />} />
                                     <Route path="/offerte/:id" element={<OfferteDetailPage />} />
                                     <Route path="/email-marketing" element={<EmailMarketingPage />} />
+                                    <Route path="/docs/import" element={<ImportDocsPage />} />
                                     <Route path="/contabilita" element={<ContabilitaPage />} />
                                     <Route path="*" element={<Navigate to="/" />} />
                                 </Routes>

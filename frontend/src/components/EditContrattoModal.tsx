@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { storicoAPI, contrattiAPI } from '../services/api';
 import { useRefreshStore } from '../store/refreshStore';
 import AssegnaAgenteCompensoModal from './AssegnaAgenteCompensoModal';
+import InlineEditable from './InlineEditable';
 
 interface EditContrattoModalProps {
     contratto: any;
@@ -50,6 +51,7 @@ export default function EditContrattoModal({
     const [formData, setFormData] = useState({
         procedure: contratto.procedure || '',
         stato: contratto.stato || 'Documenti da validare',
+        fornitore: contratto.fornitore || '',
         note: '',
         allegato: null as File | null
     });
@@ -114,61 +116,90 @@ export default function EditContrattoModal({
     const salvaCambio = async (agenteId: string | null, commissione: number | null) => {
         try {
             setSaving(true);
-            
-            // 1. Aggiorna il contratto con la nuova procedura e stato
-            const tipoContratto = contratto.tipo_contratto;
-            const contrattoId = contratto.id;
-            
-            await contrattiAPI.update(tipoContratto, contrattoId, {
-                procedure: formData.procedure,
-                stato: formData.stato
-            });
-            
-            // 2. Salva nello storico procedure e stato
-            const formDataToSend = new FormData();
-            formDataToSend.append('procedura_precedente', contratto.procedure || 'Switch');
-            formDataToSend.append('procedura_nuova', formData.procedure);
-            formDataToSend.append('stato_precedente', contratto.stato || 'Documenti da validare');
-            formDataToSend.append('stato_nuovo', formData.stato);
-            if (formData.note) {
-                formDataToSend.append('note', formData.note);
+
+            // Normalizza tipo contratto (solo "luce" o "gas") e ID come stringa
+            const tipoContratto = (String(contratto.tipo_contratto || '').toLowerCase() === 'gas') ? 'gas' : 'luce';
+            const contrattoId = String(contratto.id);
+
+            // 1) Aggiorna contratto (procedure, stato, fornitore)
+            try {
+                await contrattiAPI.update(tipoContratto, contrattoId, {
+                    procedure: formData.procedure,
+                    stato: formData.stato,
+                    fornitore: formData.fornitore
+                });
+                // Aggiorna il riepilogo nella modale subito
+                contratto.fornitore = formData.fornitore;
+                contratto.procedure = formData.procedure;
+                contratto.stato = formData.stato;
+                toast.success('✅ Contratto aggiornato');
+            } catch (err: any) {
+                console.error('❌ Errore update contratto:', {
+                    status: err?.response?.status,
+                    data: err?.response?.data,
+                    message: err?.message
+                });
+                toast.error(err?.response?.data?.message || `Errore aggiornamento contratto (${err?.response?.status ?? 'n/a'})`);
+                throw err; // interrompe il flusso se update fallisce
             }
-            if (formData.allegato) {
-                formDataToSend.append('allegato', formData.allegato);
+
+            // 2) Salva nello storico (non blocca il successo dell'update)
+            try {
+                const prevProc = (contratto.procedure || '').trim();
+                const newProc = (formData.procedure || '').trim();
+                const procedureChanged = prevProc !== newProc;
+                const statoChanged = ((contratto.stato || '').trim().toLowerCase() !== (formData.stato || '').trim().toLowerCase());
+
+                if (procedureChanged || statoChanged) {
+                    const formDataToSend = new FormData();
+                    formDataToSend.append('procedura_precedente', prevProc || 'Switch');
+                    formDataToSend.append('procedura_nuova', newProc);
+                    formDataToSend.append('stato_precedente', contratto.stato || 'Documenti da validare');
+                    formDataToSend.append('stato_nuovo', formData.stato);
+                    if (formData.note) formDataToSend.append('note', formData.note);
+                    if (formData.allegato) formDataToSend.append('allegato', formData.allegato);
+
+                    if (agenteId && commissione) {
+                        formDataToSend.append('agente_id', agenteId);
+                        formDataToSend.append('commissione_pattuita', String(commissione));
+                        formDataToSend.append('cliente_id', clienteId);
+                        formDataToSend.append('cliente_tipo', clienteTipo);
+                    }
+
+                    await storicoAPI.addProcedura(tipoContratto, contrattoId, formDataToSend);
+                } else {
+                    console.debug('Nessun cambio in procedura/stato: storico non aggiornato');
+                }
+            } catch (err: any) {
+                console.error('⚠️ Errore salvataggio storico procedura:', {
+                    status: err?.response?.status,
+                    data: err?.response?.data,
+                    message: err?.message
+                });
+                toast.error(err?.response?.data?.message || 'Errore salvataggio storico procedura');
             }
-            
-            // Se ci sono dati agente/commissione, aggiungi
-            if (agenteId && commissione) {
-                formDataToSend.append('agente_id', agenteId);
-                formDataToSend.append('commissione_pattuita', commissione.toString());
-                formDataToSend.append('cliente_id', clienteId);
-                formDataToSend.append('cliente_tipo', clienteTipo);
-            }
-            
-            await storicoAPI.addProcedura(tipoContratto, contrattoId, formDataToSend);
-            
-            toast.success('✅ Contratto aggiornato con successo!');
-            
-            // Reset form (mantieni procedura e stato aggiornati)
+
+            // 3) Reset form (mantieni valori appena salvati)
             setFormData({
                 procedure: formData.procedure,
                 stato: formData.stato,
+                fornitore: formData.fornitore,
                 note: '',
                 allegato: null
             });
-            
+
             setShowAssegnaModal(false);
-            await loadStorico(); // Ricarica lo storico procedure nella modale
-            onUpdate(); // Ricarica i contratti e lo storico nella pagina principale
-            
-            // 🔄 Triggera il refresh globale della lista clienti
+            await loadStorico();
+            onUpdate();
             triggerClientiRefresh();
             console.log('✅ Refresh clienti triggerato dopo salvataggio contratto');
-            
-            // NON chiudiamo la modale, così l'utente vede lo storico aggiornato
         } catch (error: any) {
+            // Errore generale del flusso (principalmente update)
             console.error('Errore aggiornamento contratto:', error);
-            toast.error(error.response?.data?.message || '❌ Errore aggiornamento contratto');
+            // Il toast specifico è già mostrato sopra; manteniamo un fallback
+            if (!error?.response?.data?.message) {
+                toast.error('❌ Errore aggiornamento contratto');
+            }
         } finally {
             setSaving(false);
         }
@@ -282,7 +313,22 @@ export default function EditContrattoModal({
                             </div>
                             <div>
                                 <span className="text-gray-600">Fornitore:</span>
-                                <span className="font-semibold ml-2">{contratto.fornitore}</span>
+                                <InlineEditable
+                                  value={contratto.fornitore || ''}
+                                  placeholder="Inserisci fornitore"
+                                  className="font-semibold ml-2"
+                                  onSave={async (val) => {
+                                    try {
+                                      await contrattiAPI.update(contratto.tipo_contratto, String(contratto.id), { fornitore: val });
+                                      contratto.fornitore = val;
+                                      setFormData((prev) => ({ ...prev, fornitore: val }));
+                                      toast.success('Fornitore aggiornato');
+                                    } catch (error: any) {
+                                      console.error('Errore aggiornamento fornitore:', error);
+                                      toast.error(error.response?.data?.message || '❌ Errore aggiornamento fornitore');
+                                    }
+                                  }}
+                                />
                             </div>
                             <div>
                                 <span className="text-gray-600">Procedura Attuale:</span>
@@ -337,6 +383,23 @@ export default function EditContrattoModal({
                                 <option key={stato} value={stato}>{stato}</option>
                             ))}
                         </select>
+                    </div>
+
+                    {/* Fornitore */}
+                    <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Fornitore
+                        </label>
+                        <input
+                            type="text"
+                            value={formData.fornitore}
+                            onChange={(e) => setFormData({ ...formData, fornitore: e.target.value })}
+                            placeholder="es. ALPERIA, ENEL, A2A, Edison..."
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                            Inserisci il nome del fornitore esattamente come appare nel contratto
+                        </p>
                     </div>
                     
                     {/* Note */}

@@ -37,7 +37,8 @@ export default function EmailComposeModal({ isOpen, onClose, cliente, onEmailSen
         try {
             setLoadingTemplates(true);
             const response = await emailAPI.getTemplates();
-            setTemplates(response.data.templates || []);
+            // Il backend risponde con { success, data: [...] }
+            setTemplates(response.data.data || []);
         } catch (error) {
             console.error('Errore caricamento templates:', error);
             toast.error('Errore caricamento templates');
@@ -205,7 +206,7 @@ export default function EmailComposeModal({ isOpen, onClose, cliente, onEmailSen
                                     <option value="">-- Seleziona un template --</option>
                                     {templates.map((template) => (
                                         <option key={template.id} value={template.id}>
-                                            {template.name}
+                                            {template.nome}
                                         </option>
                                     ))}
                                 </select>

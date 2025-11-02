@@ -967,8 +967,38 @@ export default function ClientiPage() {
     const activeFiltersCount = Object.values(filters).filter(v => v !== '').length;
 
     // Componente per menu azioni rapide
+    // Sanitizza placeholder testuali e rimuove HTML residuo
+    const sanitize = (v: any) => {
+        if (v === undefined || v === null) return '';
+        let s = String(v);
+        // Rimuove tag HTML comuni
+        s = s
+            .replace(/<br\s*\/?>/gi, ' ')
+            .replace(/<\/(div|span|p)>/gi, ' ')
+            .replace(/<(div|span|p)[^>]*>/gi, ' ')
+            .replace(/&nbsp;/gi, ' ');
+        // Normalizza spazi
+        s = s.trim().replace(/\s+/g, ' ');
+
+        // Rimuove placeholder anche se composti: es. "null null" -> ''
+        const placeholders = new Set(['null', 'undefined', '-', 'n/a', 'na', 'vuoto', 'manca', 'missing', 'div', 'span', 'br', 'p']);
+        const tokens = s.split(' ').filter(t => t && !placeholders.has(t.toLowerCase()));
+        return tokens.join(' ').trim();
+    };
+
+    const formatDisplayName = (cliente: any) => {
+        if (cliente.tipo === 'privato') {
+            const nome = sanitize(cliente.nome);
+            const cognome = sanitize(cliente.cognome);
+            const full = `${nome} ${cognome}`.trim();
+            return full || '—';
+        }
+        const rs = sanitize(cliente.ragione_sociale);
+        return rs || '—';
+    };
+
     const ActionsMenu = ({ cliente, inline = false }: { cliente: any; inline?: boolean }) => {
-        const clienteNome = cliente.tipo === 'privato' ? `${cliente.nome} ${cliente.cognome}` : cliente.ragione_sociale;
+        const clienteNome = formatDisplayName(cliente);
         
         if (inline) {
             // Azioni inline per vista cards/list
@@ -1839,7 +1869,7 @@ export default function ClientiPage() {
                                             <th className="w-16 px-1 py-2 text-center text-xs font-semibold text-gray-700 uppercase" title="Qualità Dati">Q</th>
                                             <th className="w-20 px-1 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Tipo</th>
                                             <th className="w-24 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase truncate">Cod.</th>
-                                            <th className="w-48 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Nome/Azienda</th>
+                <th className="w-48 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Nome/Azienda</th>
                                             <th className="w-32 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase truncate">CF/P.IVA</th>
                                             <th className="w-20 px-1 py-2 text-center text-xs font-semibold text-gray-700 uppercase" title="Contratti">⚡🔥</th>
                                             <th className="w-32 px-2 py-2 text-left text-xs font-semibold text-gray-700 uppercase">Agente</th>
@@ -1894,11 +1924,9 @@ export default function ClientiPage() {
                                             <td className="px-2 py-2 text-xs font-mono text-indigo-600 font-semibold truncate" title={cliente.codice_cliente}>
                                                 {cliente.codice_cliente || '-'}
                                             </td>
-                                            <td className="px-2 py-2 text-sm font-medium text-gray-900 truncate" title={cliente.tipo === 'privato' ? `${cliente.nome} ${cliente.cognome}` : cliente.ragione_sociale}>
-                                                {cliente.tipo === 'privato' 
-                                                    ? `${cliente.nome} ${cliente.cognome}` 
-                                                    : cliente.ragione_sociale}
-                                            </td>
+                <td className="px-2 py-2 text-sm font-medium text-gray-900 truncate" title={formatDisplayName(cliente)}>
+                    {formatDisplayName(cliente)}
+                </td>
                                             <td className="px-2 py-2 text-xs font-mono text-gray-600 truncate" title={cliente.codice_fiscale || cliente.partita_iva}>
                                                 {cliente.codice_fiscale || cliente.partita_iva || '-'}
                                             </td>

@@ -18,6 +18,7 @@ import AIImportModal from '../components/AIImportModal';
 import ClienteDocumenti from '../components/ClienteDocumenti';
 import EditContrattoModal from '../components/EditContrattoModal';
 import CreateContrattoModal from '../components/CreateContrattoModal';
+import InlineEditable from '../components/InlineEditable';
 
 type TabType = 'dati' | 'contratti' | 'documenti' | 'email' | 'note' | 'storico';
 
@@ -1085,12 +1086,21 @@ export default function ClienteDetailPage() {
                                 <>
                                     <div className="flex justify-between items-center mb-6">
                                         <h2 className="text-2xl font-bold text-gray-800">Contratti del Cliente</h2>
-                                        <button 
-                                            onClick={() => setShowCreateContrattoModal(true)}
-                                            className="btn bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
-                                        >
-                                            <Plus size={18} /> Nuovo Contratto
-                                        </button>
+                                        <div className="flex items-center gap-4">
+                                            <button
+                                                onClick={() => setShowCreateContrattoModal(true)}
+                                                className={`btn text-white flex items-center gap-2 ${
+                                                    contratti.length > 0
+                                                        ? 'bg-green-600 hover:bg-green-700'
+                                                        : 'bg-blue-600 hover:bg-blue-700'
+                                                }`}
+                                            >
+                                                <Plus size={18} /> {contratti.length > 0 ? 'Aggiungi altra fornitura' : 'Nuovo Contratto'}
+                                            </button>
+                                            <span className="text-xs text-gray-500">
+                                                Stessa azione: l’etichetta cambia in base ai contratti presenti
+                                            </span>
+                                        </div>
                                     </div>
                                 </>
                             )}
@@ -1163,23 +1173,50 @@ export default function ClienteDetailPage() {
                                                     </span>
                                                 </div>
                                                 
-                                                {/* Dettagli contratto - INFORMAZIONI ESSENZIALI */}
-                                                <div className="space-y-3 mb-4">
-                                                    {/* POD/PDR */}
-                                                    <div className="flex items-center justify-between py-2 border-b border-gray-200">
-                                                        <span className="text-sm font-semibold text-gray-600">
-                                                            {contratto.tipo_contratto === 'luce' ? 'POD' : 'PDR'}:
-                                                        </span>
-                                                        <span className="text-sm font-mono font-bold text-gray-900">
-                                                            {contratto.tipo_contratto === 'luce' ? contratto.pod : contratto.pdr}
-                                                        </span>
-                                                    </div>
-                                                    
-                                                    {/* Fornitore */}
-                                                    <div className="flex items-center justify-between py-2 border-b border-gray-200">
-                                                        <span className="text-sm font-semibold text-gray-600">Fornitore:</span>
-                                                        <span className="text-sm font-bold text-gray-900">{contratto.fornitore || 'N/A'}</span>
-                                                    </div>
+                                                    {/* Dettagli contratto - INFORMAZIONI ESSENZIALI */}
+                                                    <div className="space-y-3 mb-4">
+                                                        {/* POD/PDR */}
+                                                        <div className="flex items-center justify-between py-2 border-b border-gray-200">
+                                                            <span className="text-sm font-semibold text-gray-600">
+                                                                {contratto.tipo_contratto === 'luce' ? 'POD' : 'PDR'}:
+                                                            </span>
+                                                            <InlineEditable
+                                                              value={contratto.tipo_contratto === 'luce' ? contratto.pod : contratto.pdr}
+                                                              placeholder={contratto.tipo_contratto === 'luce' ? 'Inserisci POD' : 'Inserisci PDR'}
+                                                              className="text-sm font-mono font-bold text-gray-900"
+                                                              onSave={async (val) => {
+                                                                try {
+                                                                  const payload = contratto.tipo_contratto === 'luce' ? { pod: val } : { pdr: val };
+                                                                  await contrattiAPI.update(contratto.tipo_contratto, String(contratto.id), payload);
+                                                                  toast.success('Punto di fornitura aggiornato');
+                                                                  if (contratto.tipo_contratto === 'luce') contratto.pod = val; else contratto.pdr = val;
+                                                                } catch (err: any) {
+                                                                  toast.error(err?.response?.data?.message || 'Errore aggiornamento POD/PDR');
+                                                                  throw err;
+                                                                }
+                                                              }}
+                                                            />
+                                                        </div>
+                                                        
+                                                        {/* Fornitore */}
+                                                        <div className="flex items-center justify-between py-2 border-b border-gray-200">
+                                                            <span className="text-sm font-semibold text-gray-600">Fornitore:</span>
+                                                            <InlineEditable
+                                                              value={contratto.fornitore || ''}
+                                                              placeholder="Inserisci fornitore"
+                                                              className="text-sm font-bold text-gray-900"
+                                                              onSave={async (val) => {
+                                                                try {
+                                                                  await contrattiAPI.update(contratto.tipo_contratto, String(contratto.id), { fornitore: val });
+                                                                  toast.success('Fornitore aggiornato');
+                                                                  contratto.fornitore = val;
+                                                                } catch (err: any) {
+                                                                  toast.error(err?.response?.data?.message || 'Errore aggiornamento fornitore');
+                                                                  throw err;
+                                                                }
+                                                              }}
+                                                            />
+                                                        </div>
                                                     
                                                     {/* Prezzo */}
                                                     <div className="flex items-center justify-between py-2 border-b border-gray-200">
@@ -1200,13 +1237,46 @@ export default function ClienteDetailPage() {
                                                         </div>
                                                     )}
                                                     
-                                                    {/* Procedure */}
-                                                    {contratto.procedure && (
-                                                        <div className="flex items-center justify-between py-2 border-b border-gray-200">
-                                                            <span className="text-sm font-semibold text-gray-600">Procedure:</span>
-                                                            <span className="text-sm text-gray-900">{contratto.procedure}</span>
-                                                        </div>
-                                                    )}
+                                                    {/* Procedura Attuale (inline editable) */}
+                                                    <div className="flex items-center justify-between py-2 border-b border-gray-200">
+                                                        <span className="text-sm font-semibold text-gray-600">Procedura Attuale:</span>
+                                                        <InlineEditable
+                                                          value={contratto.procedure || ''}
+                                                          placeholder="Specifica procedura"
+                                                          className="text-sm font-bold text-gray-900"
+                                                          onSave={async (val) => {
+                                                            try {
+                                                              await contrattiAPI.update(contratto.tipo_contratto, String(contratto.id), { procedure: val });
+                                                              toast.success('Procedura aggiornata');
+                                                              contratto.procedure = val;
+                                                            } catch (err: any) {
+                                                              toast.error(err?.response?.data?.message || 'Errore aggiornamento procedura');
+                                                              throw err;
+                                                            }
+                                                          }}
+                                                        />
+                                                    </div>
+
+                                                    {/* Stato (inline editable) */}
+                                                    <div className="flex items-center justify-between py-2 border-b border-gray-200">
+                                                        <span className="text-sm font-semibold text-gray-600">Stato:</span>
+                                                        <InlineEditable
+                                                          value={contratto.stato || ''}
+                                                          placeholder="Imposta stato"
+                                                          className="text-sm font-bold text-gray-900"
+                                                          onSave={async (val) => {
+                                                            try {
+                                                              const normalized = val.trim().toLowerCase().replace(/\s+/g, '_');
+                                                              await contrattiAPI.update(contratto.tipo_contratto, String(contratto.id), { stato: normalized });
+                                                              toast.success('Stato contratto aggiornato');
+                                                              contratto.stato = normalized;
+                                                            } catch (err: any) {
+                                                              toast.error(err?.response?.data?.message || 'Errore aggiornamento stato');
+                                                              throw err;
+                                                            }
+                                                          }}
+                                                        />
+                                                    </div>
                                                     
                                                     {/* PDP */}
                                                     {contratto.pdp && (

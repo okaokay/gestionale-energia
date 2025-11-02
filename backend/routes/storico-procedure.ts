@@ -104,12 +104,9 @@ router.post('/:tipoContratto/:contrattoId', authenticate, upload.single('allegat
             });
         }
 
-        if (!procedura_nuova) {
-            return res.status(400).json({
-                success: false,
-                message: 'Procedura nuova è obbligatoria'
-            });
-        }
+        // Normalizza e valida procedura
+        const allowedProcedure = ['Switch', 'Voltura', 'Subentro', 'Allaccio', 'Attivazione su presa morosa', 'Disattivazione', 'Voltura mortis causa'];
+        const nuovaProceduraTrim = typeof procedura_nuova === 'string' ? procedura_nuova.trim() : '';
 
         // Ottieni la procedura precedente dal contratto
         const tabellaContratto = tipoContratto === 'luce' ? 'contratti_luce' : 'contratti_gas';
@@ -128,6 +125,10 @@ router.post('/:tipoContratto/:contrattoId', authenticate, upload.single('allegat
 
         const proceduraPrecedente = (contrattoResult.rows[0] as any).procedure;
 
+        const proceduraValida = nuovaProceduraTrim && allowedProcedure.includes(nuovaProceduraTrim);
+        const procedureChanged = proceduraValida && nuovaProceduraTrim !== (proceduraPrecedente || '');
+        const statoChanged = !!stato_nuovo && stato_nuovo !== stato_precedente;
+
         // Crea il record dello storico
         const storicoId = randomUUID();
         const allegatoData = req.file ? {
@@ -142,44 +143,50 @@ router.post('/:tipoContratto/:contrattoId', authenticate, upload.single('allegat
             size: null
         };
 
-        await pool.query(`
-            INSERT INTO storico_procedure (
-                id,
-                ${tipoContratto === 'luce' ? 'contratto_luce_id' : 'contratto_gas_id'},
-                tipo_contratto,
-                procedura_precedente,
-                procedura_nuova,
-                note,
-                allegato_filename,
-                allegato_path,
-                allegato_mimetype,
-                allegato_size,
-                created_by,
-                created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-        `, [
-            storicoId,
-            contrattoId,
-            tipoContratto,
-            proceduraPrecedente,
-            procedura_nuova,
-            note || null,
-            allegatoData.filename,
-            allegatoData.path,
-            allegatoData.mimetype,
-            allegatoData.size,
-            user.id
-        ]);
+        // Inserisci storico solo se la procedura è valida e cambiata
+        if (procedureChanged) {
+            await pool.query(`
+                INSERT INTO storico_procedure (
+                    id,
+                    ${tipoContratto === 'luce' ? 'contratto_luce_id' : 'contratto_gas_id'},
+                    tipo_contratto,
+                    procedura_precedente,
+                    procedura_nuova,
+                    note,
+                    allegato_filename,
+                    allegato_path,
+                    allegato_mimetype,
+                    allegato_size,
+                    created_by,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            `, [
+                storicoId,
+                contrattoId,
+                tipoContratto,
+                proceduraPrecedente,
+                nuovaProceduraTrim,
+                note || null,
+                allegatoData.filename,
+                allegatoData.path,
+                allegatoData.mimetype,
+                allegatoData.size,
+                user.id
+            ]);
+        }
 
         // Aggiorna la procedura nel contratto
-        await pool.query(`
-            UPDATE ${tabellaContratto}
-            SET procedure = ?
-            WHERE id = ?
-        `, [procedura_nuova, contrattoId]);
+        // Aggiorna la procedura nel contratto solo se valida e cambiata
+        if (procedureChanged) {
+            await pool.query(`
+                UPDATE ${tabellaContratto}
+                SET procedure = ?
+                WHERE id = ?
+            `, [nuovaProceduraTrim, contrattoId]);
+        }
         
         // Aggiorna anche lo stato se è stato modificato
-        if (stato_nuovo && stato_precedente !== stato_nuovo) {
+        if (statoChanged) {
             await pool.query(`
                 UPDATE ${tabellaContratto}
                 SET stato = ?
@@ -216,7 +223,7 @@ router.post('/:tipoContratto/:contrattoId', authenticate, upload.single('allegat
         }
 
         // Registra attività procedura nell'audit log generale (solo se è cambiata)
-        if (proceduraPrecedente !== procedura_nuova) {
+        if (procedureChanged) {
             await pool.query(`
                 INSERT INTO audit_log (
                     tipo_azione, risorsa_tipo, risorsa_id,
@@ -230,16 +237,16 @@ router.post('/:tipoContratto/:contrattoId', authenticate, upload.single('allegat
                 contrattoId,
                 clienteId,
                 clienteTipo,
-                `Procedura contratto ${tipoContratto.toUpperCase()} modificata: ${proceduraPrecedente || 'N/A'} → ${procedura_nuova}${note ? ` - ${note}` : ''}`,
+                `Procedura contratto ${tipoContratto.toUpperCase()} modificata: ${proceduraPrecedente || 'N/A'} → ${nuovaProceduraTrim}${note ? ` - ${note}` : ''}`,
                 JSON.stringify({ procedure: proceduraPrecedente }),
-                JSON.stringify({ procedure: procedura_nuova }),
+                JSON.stringify({ procedure: nuovaProceduraTrim }),
                 user.id,
                 `${user.nome} ${user.cognome}`
             ]);
         }
         
         // Se lo stato è cambiato, registra anche quello
-        if (stato_precedente && stato_nuovo && stato_precedente !== stato_nuovo) {
+        if (statoChanged) {
             await pool.query(`
                 INSERT INTO audit_log (
                     tipo_azione, risorsa_tipo, risorsa_id,
@@ -387,21 +394,30 @@ router.post('/:tipoContratto/:contrattoId', authenticate, upload.single('allegat
         }
 
         // Recupera il record appena creato con i dati dell'utente
-        const nuovoRecordResult = await pool.query(`
-            SELECT 
-                sp.*,
-                u.nome as modificato_da_nome,
-                u.cognome as modificato_da_cognome,
-                u.email as modificato_da_email
-            FROM storico_procedure sp
-            LEFT JOIN users u ON sp.created_by = u.id
-            WHERE sp.id = ?
-        `, [storicoId]);
+        if (procedureChanged) {
+            const nuovoRecordResult = await pool.query(`
+                SELECT 
+                    sp.*,
+                    u.nome as modificato_da_nome,
+                    u.cognome as modificato_da_cognome,
+                    u.email as modificato_da_email
+                FROM storico_procedure sp
+                LEFT JOIN users u ON sp.created_by = u.id
+                WHERE sp.id = ?
+            `, [storicoId]);
 
-        res.status(201).json({
+            return res.status(201).json({
+                success: true,
+                message: 'Procedura aggiornata con successo',
+                data: nuovoRecordResult.rows[0]
+            });
+        }
+
+        // Se non c'è cambio procedura ma solo stato (o nulla), rispondi comunque OK
+        return res.status(200).json({
             success: true,
-            message: 'Procedura aggiornata con successo',
-            data: nuovoRecordResult.rows[0]
+            message: statoChanged ? 'Stato aggiornato con successo' : 'Nessuna modifica di procedura; nessun record storico creato',
+            data: null
         });
     } catch (error) {
         // Rimuovi il file se c'è stato un errore
