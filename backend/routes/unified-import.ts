@@ -130,6 +130,32 @@ function normalizeDate(value: string | null): string | null {
     return s; // fallback: ritorna stringa originale
 }
 
+// Normalizza numeri provenienti da CSV (es. "0,25", "1.234,56", "€0,25/kWh") in number
+function normalizeNumber(value: string | number | null): number | null {
+    if (value === null || value === undefined) return null;
+    let s = String(value).trim().toLowerCase();
+    if (!s) return null;
+    // Rimuovi simboli di valuta e testo comune
+    s = s.replace(/eur|euro|€/g, '');
+    // Mantieni solo cifre, segno, virgole e punti
+    s = s.replace(/[^0-9,\.\-]/g, '');
+    // Se presenti sia virgola che punto, assume punto come migliaia e virgola decimale
+    if (s.includes(',') && s.includes('.')) {
+        s = s.replace(/\./g, '');
+    }
+    // Sostituisci virgola con punto come separatore decimale
+    s = s.replace(/,/g, '.');
+    // Se rimangono più punti, conserva solo l'ultimo come separatore decimale
+    const dotParts = s.split('.');
+    if (dotParts.length > 2) {
+        const last = dotParts.pop() as string;
+        s = dotParts.join('') + '.' + last;
+    }
+    const n = parseFloat(s);
+    if (Number.isNaN(n)) return null;
+    return n;
+}
+
 // Rileva dinamicamente il nome della colonna di scadenza
 // Alcuni DB hanno `data_scadenza`, altri `data_fine`.
 async function getScadenzaColumn(tableName: 'contratti_luce' | 'contratti_gas'): Promise<'data_scadenza' | 'data_fine'> {
@@ -441,9 +467,12 @@ async function insertContrattoLuce(record: Record<string, string>, clienteId: st
     const numero_contratto = record.numero_contratto || record.contratto_luce_numero || record.numero_contratto_luce || null;
     let pod = record.pod || record.contratto_luce_pod || (record as any).pod_pdr || null;
     const fornitore = record.fornitore || record.contratto_luce_fornitore_precedente || (record as any).fornitore_luce || null;
-    const data_attivazione = record.data_attivazione || record.contratto_luce_data_inizio || (record as any).data_attivazione_luce || null;
-    const data_scadenza = record.data_scadenza || record.contratto_luce_data_fine || record.contratto_luce_data_scadenza || (record as any).data_scadenza_luce || null;
-    const prezzo_energia = record.prezzo_energia || record.contratto_luce_prezzo_energia || (record as any).prezzo_energia_luce || null;
+    const data_attivazione_raw = record.data_attivazione || record.contratto_luce_data_inizio || (record as any).data_attivazione_luce || null;
+    const data_scadenza_raw = record.data_scadenza || record.contratto_luce_data_fine || record.contratto_luce_data_scadenza || (record as any).data_scadenza_luce || null;
+    const prezzo_energia_raw = record.prezzo_energia || record.contratto_luce_prezzo_energia || (record as any).prezzo_energia_luce || null;
+    const data_attivazione = normalizeDate(data_attivazione_raw);
+    const data_scadenza = normalizeDate(data_scadenza_raw);
+    const prezzo_energia = normalizeNumber(prezzo_energia_raw);
     const stato_csv = (record.stato || record.stato_contratto || (record as any)['stato contratto luce'] || record.stato_contratto_luce || null);
 
     // Determina il nome della colonna di scadenza presente nel DB
@@ -546,9 +575,12 @@ async function upsertContrattoLuce(record: Record<string, string>, clienteId: st
         const numero_contratto = record.numero_contratto || record.contratto_luce_numero || record.numero_contratto_luce || null;
         let pod = record.pod || record.contratto_luce_pod || (record as any).pod_pdr || null;
         const fornitore = record.fornitore || record.contratto_luce_fornitore_precedente || (record as any).fornitore_luce || null;
-        const data_attivazione = record.data_attivazione || record.contratto_luce_data_inizio || (record as any).data_attivazione_luce || null;
-        const data_scadenza = record.data_scadenza || record.contratto_luce_data_fine || record.contratto_luce_data_scadenza || (record as any).data_scadenza_luce || null;
-        const prezzo_energia = record.prezzo_energia || record.contratto_luce_prezzo_energia || (record as any).prezzo_energia_luce || null;
+        const data_attivazione_raw = record.data_attivazione || record.contratto_luce_data_inizio || (record as any).data_attivazione_luce || null;
+        const data_scadenza_raw = record.data_scadenza || record.contratto_luce_data_fine || record.contratto_luce_data_scadenza || (record as any).data_scadenza_luce || null;
+        const prezzo_energia_raw = record.prezzo_energia || record.contratto_luce_prezzo_energia || (record as any).prezzo_energia_luce || null;
+        const data_attivazione = normalizeDate(data_attivazione_raw);
+        const data_scadenza = normalizeDate(data_scadenza_raw);
+        const prezzo_energia = normalizeNumber(prezzo_energia_raw);
         const stato_csv = (record.stato || record.stato_contratto || (record as any)['stato contratto luce'] || record.stato_contratto_luce || null);
 
         const scadenzaCol = await getScadenzaColumn('contratti_luce');
@@ -589,9 +621,12 @@ async function insertContrattoGas(record: Record<string, string>, clienteId: str
     const numero_contratto = record.numero_contratto || record.contratto_gas_numero || record.numero_contratto_gas || null;
     let pdr = record.pdr || record.contratto_gas_pdr || (record as any).pod_pdr || null;
     const fornitore = record.fornitore || record.contratto_gas_fornitore_precedente || (record as any).fornitore_gas || null;
-    const data_attivazione = record.data_attivazione || record.contratto_gas_data_inizio || (record as any).data_attivazione_gas || null;
-    const data_scadenza = record.data_scadenza || record.contratto_gas_data_fine || record.contratto_gas_data_scadenza || (record as any).data_scadenza_gas || null;
-    const prezzo_gas = record.prezzo_gas || record.contratto_gas_prezzo_gas || (record as any).prezzo_gas_gas || null;
+    const data_attivazione_raw = record.data_attivazione || record.contratto_gas_data_inizio || (record as any).data_attivazione_gas || null;
+    const data_scadenza_raw = record.data_scadenza || record.contratto_gas_data_fine || record.contratto_gas_data_scadenza || (record as any).data_scadenza_gas || null;
+    const prezzo_gas_raw = record.prezzo_gas || record.contratto_gas_prezzo_gas || (record as any).prezzo_gas_gas || null;
+    const data_attivazione = normalizeDate(data_attivazione_raw);
+    const data_scadenza = normalizeDate(data_scadenza_raw);
+    const prezzo_gas = normalizeNumber(prezzo_gas_raw);
     const stato_csv = (record.stato || record.stato_contratto || (record as any)['stato contratto gas'] || record.stato_contratto_gas || null);
 
     const scadenzaCol = await getScadenzaColumn('contratti_gas');
@@ -689,9 +724,12 @@ async function upsertContrattoGas(record: Record<string, string>, clienteId: str
         const numero_contratto = record.numero_contratto || record.contratto_gas_numero || record.numero_contratto_gas || null;
         let pdr = record.pdr || record.contratto_gas_pdr || (record as any).pod_pdr || null;
         const fornitore = record.fornitore || record.contratto_gas_fornitore_precedente || (record as any).fornitore_gas || null;
-        const data_attivazione = record.data_attivazione || record.contratto_gas_data_inizio || (record as any).data_attivazione_gas || null;
-        const data_scadenza = record.data_scadenza || record.contratto_gas_data_fine || record.contratto_gas_data_scadenza || (record as any).data_scadenza_gas || null;
-        const prezzo_gas = record.prezzo_gas || record.contratto_gas_prezzo_gas || (record as any).prezzo_gas_gas || null;
+        const data_attivazione_raw = record.data_attivazione || record.contratto_gas_data_inizio || (record as any).data_attivazione_gas || null;
+        const data_scadenza_raw = record.data_scadenza || record.contratto_gas_data_fine || record.contratto_gas_data_scadenza || (record as any).data_scadenza_gas || null;
+        const prezzo_gas_raw = record.prezzo_gas || record.contratto_gas_prezzo_gas || (record as any).prezzo_gas_gas || null;
+        const data_attivazione = normalizeDate(data_attivazione_raw);
+        const data_scadenza = normalizeDate(data_scadenza_raw);
+        const prezzo_gas = normalizeNumber(prezzo_gas_raw);
         const stato_csv = (record.stato || record.stato_contratto || (record as any)['stato contratto gas'] || record.stato_contratto_gas || null);
 
         const scadenzaCol = await getScadenzaColumn('contratti_gas');
