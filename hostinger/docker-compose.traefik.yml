@@ -37,6 +37,7 @@ services:
       - FRONTEND_URL=https://gmgestionale.cloud
       - BACKEND_URL=https://gmgestionale.cloud
       - CORS_ORIGIN=https://gmgestionale.cloud
+      - UNSUBSCRIBE_URL=https://gmgestionale.cloud/unsubscribe
       - SECURE_COOKIES=true
       - TRUST_PROXY=true
       - JWT_SECRET=${JWT_SECRET:-change-me-please-2024}
