@@ -8,8 +8,6 @@ services:
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
-      - --entrypoints.web.http.redirections.entryPoint.to=websecure
-      - --entrypoints.web.http.redirections.entryPoint.scheme=https
       - --certificatesresolvers.le.acme.httpchallenge=true
       - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
       - --certificatesresolvers.le.acme.email=admin@gmgestionale.cloud
@@ -21,7 +19,7 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./traefik/letsencrypt:/letsencrypt
+      - traefik-certs:/letsencrypt
     networks:
       - proxy
 
@@ -37,7 +35,7 @@ services:
       - TZ=Europe/Rome
       - LOG_LEVEL=info
       - FRONTEND_URL=https://gmgestionale.cloud
-      - BACKEND_URL=https://gmgestionale.cloud
+      - BACKEND_URL=https://gmgestionale.cloud/api
       - CORS_ORIGIN=https://gmgestionale.cloud
       - SECURE_COOKIES=true
       - TRUST_PROXY=true
@@ -55,6 +53,16 @@ services:
       retries: 5
       start_period: 60s
     command: ["node", "scripts/start-with-migrate.js"]
+    labels:
+      - "traefik.enable=true"
+      # HTTP operativo subito
+      - "traefik.http.routers.gmgestionale-web.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
+      - "traefik.http.routers.gmgestionale-web.entrypoints=web"
+      - "traefik.http.services.gmgestionale.loadbalancer.server.port=3001"
+      # HTTPS si attiverà quando Let's Encrypt sblocca il rate limit
+      - "traefik.http.routers.gmgestionale-secure.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
+      - "traefik.http.routers.gmgestionale-secure.entrypoints=websecure"
+      - "traefik.http.routers.gmgestionale-secure.tls.certresolver=le"
     logging:
       driver: json-file
       options:
@@ -100,12 +108,7 @@ services:
       }
       EOF
       nginx -g "daemon off;"'
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.gmgestionale.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
-      - "traefik.http.routers.gmgestionale.entrypoints=websecure"
-      - "traefik.http.routers.gmgestionale.tls.certresolver=le"
-      - "traefik.http.services.gmgestionale.loadbalancer.server.port=80"
+    # Nessuna label Traefik su Nginx: il routing viene fatto direttamente verso l'app
     logging:
       driver: json-file
       options:
@@ -124,4 +127,6 @@ volumes:
   uploads_data:
     driver: local
   database_data:
+    driver: local
+  traefik-certs:
     driver: local
