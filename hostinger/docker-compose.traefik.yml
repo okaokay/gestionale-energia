@@ -64,10 +64,7 @@ services:
       - "traefik.http.middlewares.redirect-nonwww.redirectregex.replacement=http://gmgestionale.cloud/$${1}"
       - "traefik.http.middlewares.redirect-nonwww.redirectregex.permanent=true"
       - "traefik.http.routers.gmgestionale-web.middlewares=redirect-nonwww"
-      # HTTPS si attiverà quando Let's Encrypt sblocca il rate limit
-      - "traefik.http.routers.gmgestionale-secure.rule=Host(`gmgestionale.cloud`)"
-      - "traefik.http.routers.gmgestionale-secure.entrypoints=websecure"
-      - "traefik.http.routers.gmgestionale-secure.tls.certresolver=le"
+      # HTTPS disabilitato temporaneamente per evitare ulteriori richieste ACME durante rate limit
     logging:
       driver: json-file
       options:
