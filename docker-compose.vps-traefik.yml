@@ -41,7 +41,7 @@ services:
       NODE_ENV: production
       PORT: 3001
       FRONTEND_URL: https://gmgestionale.cloud
-      BACKEND_URL: https://gmgestionale.cloud
+      BACKEND_URL: https://gmgestionale.cloud/api
       IS_DOCKER: "true"
     command: ["sh", "-c", "node ./dist/index.js"]
     restart: unless-stopped
