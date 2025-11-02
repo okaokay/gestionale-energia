@@ -25,7 +25,7 @@ services:
 
   gestionale-energia:
     build:
-      context: ..
+      context: https://github.com/okaokay/gestionale-energia.git#main
       dockerfile: Dockerfile
     container_name: gestionale-energia
     restart: unless-stopped
