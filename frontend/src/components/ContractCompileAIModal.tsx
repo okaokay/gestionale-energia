@@ -58,7 +58,7 @@ export default function ContractCompileAIModal({ templates, onClose, onSuccess }
 
             // Chiama API AI per estrarre dati
             const response = await axios.post(
-                'http://localhost:3001/api/ai/extract-client-data',
+                '/api/ai/extract-client-data',
                 formData,
                 {
                     headers: {
@@ -104,7 +104,7 @@ export default function ContractCompileAIModal({ templates, onClose, onSuccess }
             };
 
             await axios.post(
-                'http://localhost:3001/api/contratti-compilazione/create-manual',
+                '/api/contratti-compilazione/create-manual',
                 payload,
                 { headers: { Authorization: `Bearer ${token}` } }
             );

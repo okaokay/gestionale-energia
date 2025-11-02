@@ -48,7 +48,7 @@ export default function ImportClientiModal({ isOpen, onClose, onImportComplete }
         formData.append('file', file);
 
         try {
-            const response = await fetch('http://localhost:3001/api/clienti/import', {
+    const response = await fetch('/api/clienti/import', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('token')}`

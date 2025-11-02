@@ -57,10 +57,10 @@ export default function ContrattiGestionePage() {
             const token = localStorage.getItem('token');
             
             const [contrattiRes, templatesRes] = await Promise.all([
-                axios.get('http://localhost:3001/api/contratti-compilazione', {
+                axios.get('/api/contratti-compilazione', {
                     headers: { Authorization: `Bearer ${token}` }
                 }),
-                axios.get('http://localhost:3001/api/contratti-gestione/templates', {
+                axios.get('/api/contratti-gestione/templates', {
                     headers: { Authorization: `Bearer ${token}` }
                 })
             ]);
@@ -79,7 +79,7 @@ export default function ContrattiGestionePage() {
         try {
             const token = localStorage.getItem('token');
             await axios.put(
-                `http://localhost:3001/api/contratti-compilazione/${contractId}/stato`,
+                `/api/contratti-compilazione/${contractId}/stato`,
                 { stato: nuovoStato },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -101,7 +101,7 @@ export default function ContrattiGestionePage() {
         try {
             const token = localStorage.getItem('token');
             await axios.post(
-                `http://localhost:3001/api/contratti-pdf/send-email/${contratto.id}`,
+                `/api/contratti-pdf/send-email/${contratto.id}`,
                 { email_destinatario: email, messaggio },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -123,7 +123,7 @@ export default function ContrattiGestionePage() {
         try {
             const token = localStorage.getItem('token');
             await axios.post(
-                `http://localhost:3001/api/contratti-pdf/send-whatsapp/${contratto.id}`,
+                `/api/contratti-pdf/send-whatsapp/${contratto.id}`,
                 { numero_telefono: telefono, messaggio },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -140,7 +140,7 @@ export default function ContrattiGestionePage() {
         try {
             const token = localStorage.getItem('token');
             const response = await axios.get(
-                `http://localhost:3001/api/contratti-pdf/download/${contratto.id}`,
+                `/api/contratti-pdf/download/${contratto.id}`,
                 {
                     headers: { Authorization: `Bearer ${token}` },
                     responseType: 'blob'
@@ -169,7 +169,7 @@ export default function ContrattiGestionePage() {
         try {
             const token = localStorage.getItem('token');
             await axios.delete(
-                `http://localhost:3001/api/contratti-compilazione/${contractId}`,
+                `/api/contratti-compilazione/${contractId}`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             
@@ -189,7 +189,7 @@ export default function ContrattiGestionePage() {
             
             // Scarica il PDF con autenticazione
             const response = await axios.get(
-                `http://localhost:3001/api/contratti-gestione/templates/${template.id}/preview`,
+                `/api/contratti-gestione/templates/${template.id}/preview`,
                 {
                     headers: { Authorization: `Bearer ${token}` },
                     responseType: 'blob'
@@ -217,7 +217,7 @@ export default function ContrattiGestionePage() {
         try {
             const token = localStorage.getItem('token');
             await axios.put(
-                `http://localhost:3001/api/contratti-gestione/templates/${selectedTemplate.id}`,
+                `/api/contratti-gestione/templates/${selectedTemplate.id}`,
                 updatedData,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -238,7 +238,7 @@ export default function ContrattiGestionePage() {
         try {
             const token = localStorage.getItem('token');
             await axios.delete(
-                `http://localhost:3001/api/contratti-gestione/templates/${templateId}`,
+                `/api/contratti-gestione/templates/${templateId}`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             
@@ -1012,7 +1012,7 @@ function UploadTemplateModal({ onClose, onSuccess }: { onClose: () => void; onSu
             formData.append('categoria', tipoContratto); // Manteniamo 'categoria' per compatibilità backend
             formData.append('fornitore', fornitore);
 
-            await axios.post('http://localhost:3001/api/contratti-gestione/templates/upload', formData, {
+            await axios.post('/api/contratti-gestione/templates/upload', formData, {
                 headers: {
                     Authorization: `Bearer ${token}`,
                     'Content-Type': 'multipart/form-data'

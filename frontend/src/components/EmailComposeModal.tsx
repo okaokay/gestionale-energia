@@ -89,7 +89,7 @@ export default function EmailComposeModal({ isOpen, onClose, cliente, onEmailSen
             };
 
             // Invia email tramite API
-            const response = await fetch('http://localhost:3001/api/client-actions/send-custom-email', {
+    const response = await fetch('/api/client-actions/send-custom-email', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

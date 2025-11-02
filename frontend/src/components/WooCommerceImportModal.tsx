@@ -280,7 +280,7 @@ export default function WooCommerceImportModal({ isOpen, onClose, onImportComple
             formData.append('clientType', clientType);
 
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:3001/api/clienti/woocommerce-import', {
+    const response = await fetch('/api/clienti/woocommerce-import', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`

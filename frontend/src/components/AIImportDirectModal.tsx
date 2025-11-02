@@ -55,7 +55,7 @@ export default function AIImportDirectModal({ onClose, onClientCreated }: Props)
             formData.append('clientType', clientType);
 
             const token = localStorage.getItem('token');
-            const aiResponse = await fetch('http://localhost:3001/api/ai/extract-client-data', {
+    const aiResponse = await fetch('/api/ai/extract-client-data', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -74,7 +74,7 @@ export default function AIImportDirectModal({ onClose, onClientCreated }: Props)
             
             let createResponse;
             if (clientType === 'privato') {
-                createResponse = await fetch('http://localhost:3001/api/clienti/privati', {
+        createResponse = await fetch('/api/clienti/privati', {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${token}`,
@@ -83,7 +83,7 @@ export default function AIImportDirectModal({ onClose, onClientCreated }: Props)
                     body: JSON.stringify(clientData)
                 });
             } else {
-                createResponse = await fetch('http://localhost:3001/api/clienti/aziende', {
+        createResponse = await fetch('/api/clienti/aziende', {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${token}`,

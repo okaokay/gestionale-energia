@@ -50,7 +50,7 @@ export default function WebhookSetupWizard({ onComplete, onClose }: WebhookSetup
     // Ottieni URL backend dal window
     const backendUrl = window.location.hostname === 'localhost' 
         ? 'http://localhost:3001' 
-        : `https://${window.location.hostname}`;
+        : window.location.origin;
     
     const fullWebhookUrl = `${webhookUrl || backendUrl}/api/emails/webhook/brevo`;
     

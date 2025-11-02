@@ -58,7 +58,7 @@ export default function AIImportModal({ onClose, onDataExtracted, clientType }: 
             formData.append('clientType', clientType);
 
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:3001/api/ai/extract-client-data', {
+    const response = await fetch('/api/ai/extract-client-data', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`

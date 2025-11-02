@@ -59,7 +59,7 @@ export default function ContrattiPage() {
     const loadTemplates = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await axios.get('http://localhost:3001/api/contratti-gestione/templates', {
+    const response = await axios.get('/api/contratti-gestione/templates', {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setTemplates(response.data);
@@ -86,7 +86,7 @@ export default function ContrattiPage() {
             formData.append('tipo_cliente', uploadForm.tipo_cliente);
             
             const response = await axios.post(
-                'http://localhost:3001/api/contratti-gestione/templates/upload',
+        '/api/contratti-gestione/templates/upload',
                 formData,
                 {
                     headers: {
@@ -114,7 +114,7 @@ export default function ContrattiPage() {
         
         try {
             const token = localStorage.getItem('token');
-            await axios.delete(`http://localhost:3001/api/contratti-gestione/templates/${id}`, {
+        await axios.delete(`/api/contratti-gestione/templates/${id}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             loadTemplates();
@@ -131,7 +131,7 @@ export default function ContrattiPage() {
             
             // Scarica il PDF come blob
             const response = await axios.get(
-                `http://localhost:3001/api/contratti-gestione/templates/${template.id}/pdf`,
+        `/api/contratti-gestione/templates/${template.id}/pdf`,
                 {
                     headers: { Authorization: `Bearer ${token}` },
                     responseType: 'blob'
@@ -162,7 +162,7 @@ export default function ContrattiPage() {
             const token = localStorage.getItem('token');
             
             const response = await axios.post(
-                'http://localhost:3001/api/contratti-gestione/compile',
+        '/api/contratti-gestione/compile',
                 {
                     templateId: selectedTemplate.id,
                     providedData: compileData
@@ -209,7 +209,7 @@ export default function ContrattiPage() {
             
             console.log('🤖 Estrazione dati con AI...');
             const extractResponse = await axios.post(
-                'http://localhost:3001/api/ai/extract-contract-data',
+        '/api/ai/extract-contract-data',
                 formData,
                 {
                     headers: {

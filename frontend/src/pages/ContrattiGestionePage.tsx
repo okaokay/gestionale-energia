@@ -45,10 +45,10 @@ export default function ContrattiGestionePage() {
             const token = localStorage.getItem('token');
             
             const [contrattiRes, templatesRes] = await Promise.all([
-                axios.get('http://localhost:3001/api/contratti-compilazione', {
+    axios.get('/api/contratti-compilazione', {
                     headers: { Authorization: `Bearer ${token}` }
                 }),
-                axios.get('http://localhost:3001/api/contratti-gestione/templates', {
+    axios.get('/api/contratti-gestione/templates', {
                     headers: { Authorization: `Bearer ${token}` }
                 })
             ]);
@@ -67,7 +67,7 @@ export default function ContrattiGestionePage() {
         try {
             const token = localStorage.getItem('token');
             await axios.put(
-                `http://localhost:3001/api/contratti-compilazione/${contractId}/stato`,
+    `/api/contratti-compilazione/${contractId}/stato`,
                 { stato: nuovoStato },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -98,7 +98,7 @@ export default function ContrattiGestionePage() {
         try {
             const token = localStorage.getItem('token');
             await axios.delete(
-                `http://localhost:3001/api/contratti-compilazione/${contractId}`,
+    `/api/contratti-compilazione/${contractId}`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             

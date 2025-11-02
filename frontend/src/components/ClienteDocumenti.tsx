@@ -25,7 +25,7 @@ export default function ClienteDocumenti({ clienteId, clienteTipo }: Props) {
             const token = localStorage.getItem('token');
             const tipoPath = clienteTipo === 'privato' ? 'privati' : 'aziende';
             
-            const response = await fetch(`http://localhost:3001/api/documenti/cliente/${tipoPath}/${clienteId}`, {
+    const response = await fetch(`/api/documenti/cliente/${tipoPath}/${clienteId}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             
@@ -53,7 +53,7 @@ export default function ClienteDocumenti({ clienteId, clienteTipo }: Props) {
 
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:3001/api/documenti/upload', {
+    const response = await fetch('/api/documenti/upload', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` },
                 body: formData
@@ -74,7 +74,7 @@ export default function ClienteDocumenti({ clienteId, clienteTipo }: Props) {
     const handleDownload = async (id: number) => {
         try {
             const token = localStorage.getItem('token');
-            window.open(`http://localhost:3001/api/documenti/${id}/download?token=${token}`, '_blank');
+    window.open(`/api/documenti/${id}/download?token=${token}`, '_blank');
         } catch (error) {
             toast.error('Errore download');
         }
@@ -85,7 +85,7 @@ export default function ClienteDocumenti({ clienteId, clienteTipo }: Props) {
 
         try {
             const token = localStorage.getItem('token');
-            await fetch(`http://localhost:3001/api/documenti/${id}`, {
+    await fetch(`/api/documenti/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
