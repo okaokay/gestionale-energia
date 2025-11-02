@@ -1,7 +1,0 @@
-tls:
-  certificates:
-    - certFile: /certs/gmgestionale.cloud.crt
-      keyFile: /certs/gmgestionale.cloud.key
-  options:
-    default:
-      sniStrict: true
