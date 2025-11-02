@@ -526,6 +526,17 @@ async function insertContrattoLuce(record: Record<string, string>, clienteId: st
         ? (colsAvailable.includes('cliente_azienda_id') ? 'cliente_azienda_id' : (colsAvailable.includes('cliente_id') ? 'cliente_id' : 'cliente_privato_id'))
         : (colsAvailable.includes('cliente_privato_id') ? 'cliente_privato_id' : (colsAvailable.includes('cliente_id') ? 'cliente_id' : 'cliente_azienda_id'));
 
+    // Valida created_by: se l'utente non esiste su questo DB, evita violazioni FK
+    let createdBySafe: string | null = null;
+    if (createdBy && colsAvailable.includes('created_by')) {
+        try {
+            const r = await pool.query<{ id: number | string }>('SELECT id FROM users WHERE id = $1 LIMIT 1', [createdBy]);
+            createdBySafe = r.rows?.[0]?.id ? String(r.rows[0].id) : null;
+        } catch {
+            createdBySafe = null;
+        }
+    }
+
     const columns: string[] = ['id', clientCol, 'tipo_cliente', 'numero_contratto', 'pod', 'fornitore', 'data_attivazione', scadenzaCol];
     const values: any[] = [id, clienteId, clienteType, numero_contratto, pod, fornitore, data_attivazione, data_scadenza];
 
@@ -539,7 +550,7 @@ async function insertContrattoLuce(record: Record<string, string>, clienteId: st
     }
     if (colsAvailable.includes('created_by')) {
         columns.push('created_by');
-        values.push(createdBy);
+        values.push(createdBySafe);
     }
     // Nota: evitiamo 'created_at' per compatibilità, se presente sarà gestito da default/trigger esterni
 
@@ -583,8 +594,8 @@ async function findContrattoLuceId(record: Record<string, string>, clienteId?: s
                 const hasAz = cols.includes('cliente_azienda_id');
                 const hasGen = cols.includes('cliente_id');
                 if (hasPriv && hasAz) {
-                    query += ' AND (cliente_privato_id = $2 OR cliente_azienda_id = $2)';
-                    params.push(clienteId);
+                    query += ' AND (cliente_privato_id = $2 OR cliente_azienda_id = $3)';
+                    params.push(clienteId, clienteId);
                 } else if (hasAz) {
                     query += ' AND cliente_azienda_id = $2';
                     params.push(clienteId);
@@ -678,6 +689,17 @@ async function insertContrattoGas(record: Record<string, string>, clienteId: str
         ? (colsAvailable.includes('cliente_azienda_id') ? 'cliente_azienda_id' : (colsAvailable.includes('cliente_id') ? 'cliente_id' : 'cliente_privato_id'))
         : (colsAvailable.includes('cliente_privato_id') ? 'cliente_privato_id' : (colsAvailable.includes('cliente_id') ? 'cliente_id' : 'cliente_azienda_id'));
 
+    // Valida created_by: se l'utente non esiste su questo DB, evita violazioni FK
+    let createdBySafe: string | null = null;
+    if (createdBy && colsAvailable.includes('created_by')) {
+        try {
+            const r = await pool.query<{ id: number | string }>('SELECT id FROM users WHERE id = $1 LIMIT 1', [createdBy]);
+            createdBySafe = r.rows?.[0]?.id ? String(r.rows[0].id) : null;
+        } catch {
+            createdBySafe = null;
+        }
+    }
+
     const columns: string[] = ['id', clientCol, 'tipo_cliente', 'numero_contratto', 'pdr', 'fornitore', 'data_attivazione', scadenzaCol];
     const values: any[] = [id, clienteId, clienteType, numero_contratto, pdr, fornitore, data_attivazione, data_scadenza];
 
@@ -698,7 +720,7 @@ async function insertContrattoGas(record: Record<string, string>, clienteId: str
     }
     if (colsAvailable.includes('created_by')) {
         columns.push('created_by');
-        values.push(createdBy);
+        values.push(createdBySafe);
     }
     // Evitiamo 'created_at' per compatibilità
 
@@ -732,8 +754,8 @@ async function findContrattoGasId(record: Record<string, string>, clienteId?: st
                 const hasAz = cols.includes('cliente_azienda_id');
                 const hasGen = cols.includes('cliente_id');
                 if (hasPriv && hasAz) {
-                    query += ' AND (cliente_privato_id = $2 OR cliente_azienda_id = $2)';
-                    params.push(clienteId);
+                    query += ' AND (cliente_privato_id = $2 OR cliente_azienda_id = $3)';
+                    params.push(clienteId, clienteId);
                 } else if (hasAz) {
                     query += ' AND cliente_azienda_id = $2';
                     params.push(clienteId);
