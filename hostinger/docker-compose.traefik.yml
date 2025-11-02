@@ -59,8 +59,13 @@ services:
       - "traefik.http.routers.gmgestionale-web.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
       - "traefik.http.routers.gmgestionale-web.entrypoints=web"
       - "traefik.http.services.gmgestionale.loadbalancer.server.port=3001"
+      # Redirect www -> non-www su HTTP (schemi http finché il cert non è attivo)
+      - "traefik.http.middlewares.redirect-nonwww.redirectregex.regex=^https?://www\\.gmgestionale\\.cloud/(.*)"
+      - "traefik.http.middlewares.redirect-nonwww.redirectregex.replacement=http://gmgestionale.cloud/$${1}"
+      - "traefik.http.middlewares.redirect-nonwww.redirectregex.permanent=true"
+      - "traefik.http.routers.gmgestionale-web.middlewares=redirect-nonwww"
       # HTTPS si attiverà quando Let's Encrypt sblocca il rate limit
-      - "traefik.http.routers.gmgestionale-secure.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
+      - "traefik.http.routers.gmgestionale-secure.rule=Host(`gmgestionale.cloud`)"
       - "traefik.http.routers.gmgestionale-secure.entrypoints=websecure"
       - "traefik.http.routers.gmgestionale-secure.tls.certresolver=le"
     logging:
