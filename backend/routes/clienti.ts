@@ -782,6 +782,96 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
             return value;
         };
 
+        // Helpers per risolvere l'agente dal CSV (ID, email, nome)
+        const isValidUuid = (val: string): boolean => {
+            return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val || '');
+        };
+
+        const findUserIdByEmail = async (emailRaw: any): Promise<string | null> => {
+            const email = normalizeValue(emailRaw);
+            if (!email) return null;
+            try {
+                const r = await pool.query(`SELECT id FROM users WHERE email ILIKE ? LIMIT 1`, [email]);
+                if (r.rows && r.rows.length > 0) {
+                    return (r.rows[0] as any).id || null;
+                }
+            } catch { /* ignore */ }
+            return null;
+        };
+
+        const findUserIdByName = async (nameRaw: any): Promise<string | null> => {
+            const fullName = normalizeValue(nameRaw);
+            if (!fullName) return null;
+            const cleaned = String(fullName).replace(/\s+/g, ' ').trim();
+            if (!cleaned) return null;
+            try {
+                // Match esatto su "nome cognome"
+                const rExact = await pool.query(
+                    `SELECT id FROM users WHERE LOWER(nome || ' ' || cognome) = LOWER(?) LIMIT 1`,
+                    [cleaned]
+                );
+                if (rExact.rows && rExact.rows.length > 0) {
+                    return (rExact.rows[0] as any).id || null;
+                }
+
+                // Fallback: split per ricavare nome e cognome (prima e ultima parola)
+                const parts = cleaned.split(' ');
+                const first = parts[0];
+                const last = parts[parts.length - 1];
+                if (first && last) {
+                    const rSplit = await pool.query(
+                        `SELECT id FROM users WHERE LOWER(nome) = LOWER(?) AND LOWER(cognome) = LOWER(?) LIMIT 1`,
+                        [first, last]
+                    );
+                    if (rSplit.rows && rSplit.rows.length > 0) {
+                        return (rSplit.rows[0] as any).id || null;
+                    }
+                }
+            } catch { /* ignore */ }
+            return null;
+        };
+
+        const resolveAssignedAgentId = async (record: any, currentUser: any): Promise<string | null> => {
+            // Supporta varianti di campo
+            const rawId = normalizeValue(record.assigned_agent_id) || normalizeValue(record.agente_id);
+            const rawEmail = normalizeValue(record.assigned_agent_email) || normalizeValue(record.agente_email);
+            const rawName = normalizeValue(record.assigned_agent_name) || normalizeValue(record.agente_nome);
+
+            // 1) ID esplicito se UUID valido e esiste
+            if (rawId && typeof rawId === 'string') {
+                if (isValidUuid(rawId)) {
+                    try {
+                        const r = await pool.query(`SELECT id FROM users WHERE id = ? LIMIT 1`, [rawId]);
+                        if (r.rows && r.rows.length > 0) {
+                            return (r.rows[0] as any).id || null;
+                        }
+                    } catch { /* ignore */ }
+                } else if (rawId.includes('@')) {
+                    // Se non è UUID ma sembra email, prova come email
+                    const byEmail = await findUserIdByEmail(rawId);
+                    if (byEmail) return byEmail;
+                } else {
+                    // Altrimenti trattalo come nome completo
+                    const byName = await findUserIdByName(rawId);
+                    if (byName) return byName;
+                }
+            }
+
+            // 2) Email esplicita
+            const byEmail = await findUserIdByEmail(rawEmail);
+            if (byEmail) return byEmail;
+
+            // 3) Nome esplicito
+            const byName = await findUserIdByName(rawName);
+            if (byName) return byName;
+
+            // 4) Fallback: se l'utente corrente è operatore/agent, usa il suo id
+            if (currentUser && (currentUser.role === 'operatore' || currentUser.role === 'agent')) {
+                return currentUser.id;
+            }
+            return null;
+        };
+
         // Importa ogni record
         for (let i = 0; i < records.length; i++) {
             const record = records[i];
@@ -816,9 +906,9 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
                         throw new Error('Almeno uno tra nome, cognome, email o codice fiscale deve essere presente');
                     }
 
-                    // 🔐 Assegna automaticamente l'agente se operatore
+                    // 🔐 Risolvi agente da CSV (ID/email/nome) con fallback all'utente operatore
                     const user = (req as any).user;
-                    const assignedAgentId = (user.role === 'operatore' || user.role === 'agent') ? user.id : null;
+                    const assignedAgentId = await resolveAssignedAgentId(record, user);
                     
                     // 🔄 UPSERT: Cerca se esiste già (per codice_fiscale o email)
                     let clienteId = null;
@@ -864,6 +954,7 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
                                 news_letter = ?,
                                 utente_acquisizione = ?,
                                 note = ?,
+                                assigned_agent_id = COALESCE(?, assigned_agent_id),
                                 updated_at = datetime('now')
                             WHERE id = ?
                         `, [
@@ -886,6 +977,7 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
                             record.news_letter === '1' || record.news_letter === 1 ? 1 : 0,
                             normalizeValue(record.utente_acquisizione),
                             normalizeValue(record.note),
+                            assignedAgentId,
                             clienteId
                         ]);
                     } else {
@@ -1064,9 +1156,9 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
                         throw new Error('Almeno uno tra ragione sociale, partita IVA o email deve essere presente');
                     }
 
-                    // 🔐 Assegna automaticamente l'agente se operatore
+                    // 🔐 Risolvi agente da CSV (ID/email/nome) con fallback all'utente operatore
                     const user = (req as any).user;
-                    const assignedAgentId = (user.role === 'operatore' || user.role === 'agent') ? user.id : null;
+                    const assignedAgentId = await resolveAssignedAgentId(record, user);
                     
                     // 🔄 UPSERT: Cerca se esiste già (per partita_iva o ragione_sociale)
                     let clienteId = null;
@@ -1114,6 +1206,7 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
                                 news_letter = ?,
                                 utente_acquisizione = ?,
                                 note = ?,
+                                assigned_agent_id = COALESCE(?, assigned_agent_id),
                                 updated_at = datetime('now')
                             WHERE id = ?
                         `, [
@@ -1138,6 +1231,7 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
                             record.news_letter === '1' || record.news_letter === 1 ? 1 : 0,
                             normalizeValue(record.utente_acquisizione),
                             normalizeValue(record.note),
+                            assignedAgentId,
                             clienteId
                         ]);
                     } else {
