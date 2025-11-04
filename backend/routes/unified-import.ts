@@ -199,6 +199,44 @@ async function findUserIdByEmail(email?: string): Promise<string | null> {
     }
 }
 
+// Trova ID utente tramite nome completo ("Nome Cognome") o singolo token
+async function findUserIdByName(fullName?: string): Promise<string | null> {
+    if (!fullName) return null;
+    const name = String(fullName).trim().toLowerCase();
+    if (!name) return null;
+    try {
+        // Match su nome+cognome esatto (in entrambe le combinazioni)
+        const res = await pool.query<{ id: number | string }>(
+            `SELECT id FROM users 
+             WHERE LOWER(TRIM(nome || ' ' || cognome)) = $1 
+                OR LOWER(TRIM(cognome || ' ' || nome)) = $1
+             LIMIT 1`,
+            [name]
+        );
+        if (res.rows?.[0]?.id) return String(res.rows[0].id);
+
+        // Se ci sono almeno due parole, prova match separato nome/cognome
+        const parts = name.split(/\s+/).filter(Boolean);
+        if (parts.length >= 2) {
+            const first = parts[0];
+            const last = parts.slice(1).join(' ');
+            const r2 = await pool.query<{ id: number | string }>(
+                `SELECT id FROM users WHERE LOWER(TRIM(nome)) = $1 AND LOWER(TRIM(cognome)) = $2 LIMIT 1`,
+                [first, last]
+            );
+            if (r2.rows?.[0]?.id) return String(r2.rows[0].id);
+        } else {
+            // Fallback: match su singolo token in nome o cognome
+            const r3 = await pool.query<{ id: number | string }>(
+                `SELECT id FROM users WHERE LOWER(TRIM(nome)) = $1 OR LOWER(TRIM(cognome)) = $1 LIMIT 1`,
+                [name]
+            );
+            if (r3.rows?.[0]?.id) return String(r3.rows[0].id);
+        }
+    } catch {}
+    return null;
+}
+
 async function findClientePrivatoId(record: Record<string, string>): Promise<string | null> {
     const cfRaw = record.codice_fiscale || record.cliente_codice_fiscale;
     const emailRaw = record.email_principale || record.cliente_email;
@@ -1065,14 +1103,31 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                 // associazione agente se richiesto
                 let assignedUserId: string | null = null;
                 if (!options.skipAssociation) {
-                    // Supporta sia chiave inglese che italiana e ID diretto
-                    const directId = (rec.assigned_agent_id || (rec as any).agente_id || (rec as any).agent_id);
-                    if (directId) {
-                        assignedUserId = String(directId);
-                    } else {
-                        assignedUserId = await findUserIdByEmail(
-                            (rec as any).assigned_agent_email || (rec as any).agente_email || (rec as any).agent_email || (rec as any).assegnato_a_email
-                        );
+                    // 1) Prova con ID diretto: se non è un ID valido, trattalo come nome
+                    const directIdRaw = (rec.assigned_agent_id || (rec as any).agente_id || (rec as any).agent_id);
+                    if (directIdRaw) {
+                        const directId = String(directIdRaw).trim();
+                        // Verifica esistenza come ID
+                        try {
+                            const chk = await pool.query<{ id: number | string }>('SELECT id FROM users WHERE id = $1 LIMIT 1', [directId]);
+                            if (chk.rows?.[0]?.id) {
+                                assignedUserId = String(chk.rows[0].id);
+                            }
+                        } catch {}
+                        // Se non è un ID valido, prova come email o come nome completo
+                        if (!assignedUserId) {
+                            assignedUserId = await findUserIdByEmail(directId) || await findUserIdByName(directId);
+                        }
+                    }
+                    // 2) Se non trovato, prova via email esplicita
+                    if (!assignedUserId) {
+                        const emailCandidate = (rec as any).assigned_agent_email || (rec as any).agente_email || (rec as any).agent_email || (rec as any).assegnato_a_email;
+                        assignedUserId = await findUserIdByEmail(emailCandidate);
+                    }
+                    // 3) Se non trovato, prova via nome esplicito
+                    if (!assignedUserId) {
+                        const nameCandidate = (rec as any).agente_nome || (rec as any).assigned_agent_name || (rec as any).agent_name;
+                        assignedUserId = await findUserIdByName(nameCandidate);
                     }
                 }
 
