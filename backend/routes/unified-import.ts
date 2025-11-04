@@ -697,12 +697,10 @@ async function findContrattoLuceId(record: Record<string, string>, clienteId?: s
 
 // Effettua UPSERT per contratto luce: se esiste aggiorna, altrimenti inserisce
 async function upsertContrattoLuce(record: Record<string, string>, clienteId: string, clienteType: 'privato' | 'azienda', createdBy: string | null, dryRun: boolean): Promise<{ id: string; action: 'inserted' | 'updated' | 'would_insert' | 'would_update' }> {
-    const modeRaw = (record as any).modalita_import || '';
-    const mode = String(modeRaw).toLowerCase();
-    const shouldUpdate = mode === 'update' || mode === 'upsert';
-
+    // Comportamento di default: se esiste un contratto con stesso POD/numero, aggiorna
+    // "modalita_import" può ancora forzare l'inserimento solo se non esiste alcun match
     const existingId = await findContrattoLuceId(record, clienteId);
-    if (shouldUpdate && existingId) {
+    if (existingId) {
         if (dryRun) return { id: existingId, action: 'would_update' };
 
         const numero_contratto = record.numero_contratto || record.contratto_luce_numero || record.numero_contratto_luce || null;
@@ -897,12 +895,10 @@ async function findContrattoGasId(record: Record<string, string>, clienteId?: st
 
 // Effettua UPSERT per contratto gas: se esiste aggiorna, altrimenti inserisce
 async function upsertContrattoGas(record: Record<string, string>, clienteId: string, clienteType: 'privato' | 'azienda', createdBy: string | null, dryRun: boolean): Promise<{ id: string; action: 'inserted' | 'updated' | 'would_insert' | 'would_update' }> {
-    const modeRaw = (record as any).modalita_import || '';
-    const mode = String(modeRaw).toLowerCase();
-    const shouldUpdate = mode === 'update' || mode === 'upsert';
-
+    // Comportamento di default: se esiste un contratto con stesso PDR/numero, aggiorna
+    // "modalita_import" può ancora forzare l'inserimento solo se non esiste alcun match
     const existingId = await findContrattoGasId(record, clienteId);
-    if (shouldUpdate && existingId) {
+    if (existingId) {
         if (dryRun) return { id: existingId, action: 'would_update' };
 
         const numero_contratto = record.numero_contratto || record.contratto_gas_numero || record.numero_contratto_gas || null;

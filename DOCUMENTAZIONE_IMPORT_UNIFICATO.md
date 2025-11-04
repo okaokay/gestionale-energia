@@ -95,3 +95,10 @@ contratto_gas,IT001G987654321,Hera,2023-06-15,101
 ## Note
 - Il sistema può **rilevare automaticamente** il tipo record se il flag apposito è attivo.
 - Il CSV può contenere righe miste (clienti e contratti) purché ogni riga abbia `tipo_record` corretto.
+
+## Prevenzione Duplicati (contratti luce/gas)
+- Per evitare duplicazioni durante re-import dello stesso file, l'import effettua **aggiornamento automatico** se trova un contratto esistente con stesso identificativo:
+  - Luce: match su `numero_contratto` oppure su `pod` (eventualmente in contesto cliente).
+  - Gas: match su `numero_contratto` oppure su `pdr` (eventualmente in contesto cliente).
+- Quando viene trovato un match, il contratto esistente viene **aggiornato** con i nuovi dati (date, fornitore, prezzo, stato), invece di creare un nuovo record.
+- Se desideri forzare un nuovo inserimento, assicurati che **`numero_contratto` e `pod/pdr`** non coincidano con un record già presente per lo stesso cliente.
