@@ -1292,8 +1292,11 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                         activeImports[importId].result.warnings.push(`Riga ${rowNum}: cliente_azienda aggiornato (${aziendaId})`);
                     }
                     // Se nel record sono presenti dati contratto, gestisci contratti luce/gas associati all'azienda
-                    const hasLuce = !!pickFirstNonEmpty(rec, ['pod', 'numero_contratto', 'fornitore']) && (rec.tipo_contratto || '').toLowerCase() !== 'gas';
-                    const hasGas = !!pickFirstNonEmpty(rec, ['pdr', 'numero_contratto', 'fornitore']) && ((rec.tipo_contratto || '').toLowerCase() === 'gas' || !!rec.pdr);
+                    // Rilevazione più rigorosa: luce SOLO se c'è un identificativo luce reale (POD o numero_contratto_luce
+                    // o tipo_contratto esplicitamente 'luce'). Gas SOLO se c'è PDR o numero_contratto_gas
+                    const tipoContratto = (rec.tipo_contratto || '').toLowerCase();
+                    const hasLuce = !!(pickFirstNonEmpty(rec, ['pod', 'contratto_luce_pod', 'numero_contratto_luce']) || tipoContratto === 'luce');
+                    const hasGas = !!(pickFirstNonEmpty(rec, ['pdr', 'contratto_gas_pdr', 'numero_contratto_gas']) || tipoContratto === 'gas');
 
                     if (hasLuce) {
                         const actLuce = normalizeDate(pickFirstNonEmpty(rec, [
