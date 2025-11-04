@@ -202,36 +202,73 @@ async function findUserIdByEmail(email?: string): Promise<string | null> {
 // Trova ID utente tramite nome completo ("Nome Cognome") o singolo token
 async function findUserIdByName(fullName?: string): Promise<string | null> {
     if (!fullName) return null;
-    const name = String(fullName).trim().toLowerCase();
-    if (!name) return null;
+    // Normalizza: rimuove spazi multipli, punteggiatura comune e abbassa il case
+    const normalize = (s: string) => {
+        return s
+            .replace(/\s+/g, ' ')
+            .replace(/[\'\.\-,]/g, '')
+            .trim()
+            .toLowerCase();
+    };
+
+    const raw = String(fullName).trim();
+    if (!raw) return null;
+    const nameNorm = normalize(raw);
+
     try {
-        // Match su nome+cognome esatto (in entrambe le combinazioni)
+        // Match esatto su nome+cognome normalizzati (entrambe le combinazioni)
         const res = await pool.query<{ id: number | string }>(
             `SELECT id FROM users 
-             WHERE LOWER(TRIM(nome || ' ' || cognome)) = $1 
-                OR LOWER(TRIM(cognome || ' ' || nome)) = $1
+             WHERE LOWER(REPLACE(REPLACE(REPLACE(TRIM(nome || ' ' || cognome), '''', ''), '.', ''), ',', '')) = $1
+                OR LOWER(REPLACE(REPLACE(REPLACE(TRIM(cognome || ' ' || nome), '''', ''), '.', ''), ',', '')) = $1
              LIMIT 1`,
-            [name]
+            [nameNorm, nameNorm]
         );
         if (res.rows?.[0]?.id) return String(res.rows[0].id);
 
-        // Se ci sono almeno due parole, prova match separato nome/cognome
-        const parts = name.split(/\s+/).filter(Boolean);
+        // Tokenizza e prova match separato nome/cognome
+        const parts = nameNorm.split(' ').filter(Boolean);
         if (parts.length >= 2) {
             const first = parts[0];
             const last = parts.slice(1).join(' ');
+            // Match esatto su nome e cognome
             const r2 = await pool.query<{ id: number | string }>(
-                `SELECT id FROM users WHERE LOWER(TRIM(nome)) = $1 AND LOWER(TRIM(cognome)) = $2 LIMIT 1`,
+                `SELECT id FROM users 
+                 WHERE LOWER(REPLACE(TRIM(nome), '''', '')) = $1 
+                   AND LOWER(REPLACE(TRIM(cognome), '''', '')) = $2 
+                 LIMIT 1`,
                 [first, last]
             );
             if (r2.rows?.[0]?.id) return String(r2.rows[0].id);
+            // Fallback fuzzy: LIKE su nome e cognome
+            const r2like = await pool.query<{ id: number | string }>(
+                `SELECT id FROM users 
+                 WHERE LOWER(REPLACE(TRIM(nome), '''', '')) LIKE '%' || $1 || '%' 
+                   AND LOWER(REPLACE(TRIM(cognome), '''', '')) LIKE '%' || $2 || '%' 
+                 LIMIT 1`,
+                [first, last]
+            );
+            if (r2like.rows?.[0]?.id) return String(r2like.rows[0].id);
         } else {
+            const token = parts[0] || nameNorm;
             // Fallback: match su singolo token in nome o cognome
             const r3 = await pool.query<{ id: number | string }>(
-                `SELECT id FROM users WHERE LOWER(TRIM(nome)) = $1 OR LOWER(TRIM(cognome)) = $1 LIMIT 1`,
-                [name]
+                `SELECT id FROM users 
+                 WHERE LOWER(REPLACE(TRIM(nome), '''', '')) = $1 
+                    OR LOWER(REPLACE(TRIM(cognome), '''', '')) = $1 
+                 LIMIT 1`,
+                [token, token]
             );
             if (r3.rows?.[0]?.id) return String(r3.rows[0].id);
+            // Fallback fuzzy: LIKE su singolo token
+            const r3like = await pool.query<{ id: number | string }>(
+                `SELECT id FROM users 
+                 WHERE LOWER(REPLACE(TRIM(nome), '''', '')) LIKE '%' || $1 || '%' 
+                    OR LOWER(REPLACE(TRIM(cognome), '''', '')) LIKE '%' || $1 || '%' 
+                 LIMIT 1`,
+                [token, token]
+            );
+            if (r3like.rows?.[0]?.id) return String(r3like.rows[0].id);
         }
     } catch {}
     return null;
@@ -339,6 +376,12 @@ async function insertClientePrivato(record: Record<string, string>, createdBy: s
         if (col === 'id' || colsAvailable.includes(col)) {
             const t = (colTypes[col] || '').toUpperCase();
             let v = valRaw;
+            // Special-case: non forzare a numero l'ID agente assegnato
+            // In alcuni DB la colonna può risultare INTEGER, ma l'ID utente è testuale/UUID.
+            // Manteniamo sempre il valore come stringa per evitare null in inserimento.
+            if (col === 'assigned_agent_id') {
+                v = (v === null || v === undefined) ? null : String(v);
+            } else {
             if (v !== null && v !== undefined) {
                 if (/^(INTEGER|INT|BIGINT|SMALLINT)$/.test(t)) {
                     const num = normalizeNumber(v);
@@ -358,6 +401,7 @@ async function insertClientePrivato(record: Record<string, string>, createdBy: s
                 } else {
                     v = (v === null ? null : String(v));
                 }
+            }
             }
             columns.push(col);
             values.push(v);
@@ -561,7 +605,8 @@ async function upsertClienteAzienda(record: Record<string, string>, createdBy: s
                 params.push(v);
             }
         });
-        if (assignedAgentId && cols.includes('assigned_agent_id')) {
+        if (assignedAgentId) {
+            // Aggiorna sempre l'agente assegnato se determinato, anche se la colonna non era nel CSV
             sets.push(`assigned_agent_id = $${params.length + 1}`);
             params.push(assignedAgentId);
         }
@@ -1103,31 +1148,45 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                 // associazione agente se richiesto
                 let assignedUserId: string | null = null;
                 if (!options.skipAssociation) {
-                    // 1) Prova con ID diretto: se non è un ID valido, trattalo come nome
-                    const directIdRaw = (rec.assigned_agent_id || (rec as any).agente_id || (rec as any).agent_id);
-                    if (directIdRaw) {
-                        const directId = String(directIdRaw).trim();
-                        // Verifica esistenza come ID
-                        try {
-                            const chk = await pool.query<{ id: number | string }>('SELECT id FROM users WHERE id = $1 LIMIT 1', [directId]);
-                            if (chk.rows?.[0]?.id) {
-                                assignedUserId = String(chk.rows[0].id);
-                            }
-                        } catch {}
-                        // Se non è un ID valido, prova come email o come nome completo
+                    // PRIORITÀ ASSOLUTA: se è presente 'agente_nome', usa SOLO quello
+                    const agenteNomeRaw = (rec as any).agente_nome;
+                    if (agenteNomeRaw) {
+                        assignedUserId = await findUserIdByName(agenteNomeRaw);
                         if (!assignedUserId) {
-                            assignedUserId = await findUserIdByEmail(directId) || await findUserIdByName(directId);
+                            const tried = String(agenteNomeRaw || '').trim();
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: agente_nome non trovato per '${tried}'`);
                         }
-                    }
-                    // 2) Se non trovato, prova via email esplicita
-                    if (!assignedUserId) {
-                        const emailCandidate = (rec as any).assigned_agent_email || (rec as any).agente_email || (rec as any).agent_email || (rec as any).assegnato_a_email;
-                        assignedUserId = await findUserIdByEmail(emailCandidate);
-                    }
-                    // 3) Se non trovato, prova via nome esplicito
-                    if (!assignedUserId) {
-                        const nameCandidate = (rec as any).agente_nome || (rec as any).assigned_agent_name || (rec as any).agent_name;
-                        assignedUserId = await findUserIdByName(nameCandidate);
+                    } else {
+                        // 1) Prova con ID diretto: se non è un ID valido, trattalo come nome
+                        const directIdRaw = (rec.assigned_agent_id || (rec as any).agente_id || (rec as any).agent_id);
+                        if (directIdRaw) {
+                            const directId = String(directIdRaw).trim();
+                            // Verifica esistenza come ID
+                            try {
+                                const chk = await pool.query<{ id: number | string }>('SELECT id FROM users WHERE id = $1 LIMIT 1', [directId]);
+                                if (chk.rows?.[0]?.id) {
+                                    assignedUserId = String(chk.rows[0].id);
+                                }
+                            } catch {}
+                            // Se non è un ID valido, prova come email o come nome completo
+                            if (!assignedUserId) {
+                                assignedUserId = await findUserIdByEmail(directId) || await findUserIdByName(directId);
+                            }
+                        }
+                        // 2) Se non trovato, prova via email esplicita
+                        if (!assignedUserId) {
+                            const emailCandidate = (rec as any).assigned_agent_email || (rec as any).agente_email || (rec as any).agent_email || (rec as any).assegnato_a_email;
+                            assignedUserId = await findUserIdByEmail(emailCandidate);
+                        }
+                        // 3) Se non trovato, prova via nome esplicito (assigned_agent_name/agent_name)
+                        if (!assignedUserId) {
+                            const nameCandidate = (rec as any).assigned_agent_name || (rec as any).agent_name;
+                            assignedUserId = await findUserIdByName(nameCandidate);
+                            if (!assignedUserId && (nameCandidate || directIdRaw)) {
+                                const tried = (nameCandidate || directIdRaw) ? String(nameCandidate || directIdRaw) : '';
+                                activeImports[importId].result.warnings.push(`Riga ${rowNum}: agente non trovato per '${tried}'`);
+                            }
+                        }
                     }
                 }
 
@@ -1237,14 +1296,20 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                     if (!clienteId || clienteId === '0' || clienteId === 'null' || clienteId === 'undefined') {
                         throw new Error('Associazione cliente fallita: id cliente non valido per contratto_luce');
                     }
-                    // Aggiorna assegnazione agente anche su contratti, se disponibile
+                    // Aggiorna assegnazione agente sul cliente trovato, se disponibile
+                    // Aggiorna indipendentemente dalla presenza della colonna nel CSV
+                    // (se la tabella ha il campo, l'UPDATE riuscirà; in caso contrario logga warning)
                     if (assignedUserId && !options.dryRun) {
                         try {
-                            const cols = await getTableColumns('clienti_privati');
-                            if (cols.includes('assigned_agent_id')) {
-                                const upd = await pool.query(`UPDATE clienti_privati SET assigned_agent_id = $1 WHERE id = $2`, [assignedUserId, clienteId]);
-                                activeImports[importId].result.warnings.push(`Riga ${rowNum}: update assigned_agent_id da contratto_luce cliente_id=${clienteId}, changes=${upd.rowCount}`);
-                            }
+                            // verifica se è azienda o privato per aggiornare la tabella corretta
+                            let isAziendaCheck = false;
+                            try {
+                                const r = await pool.query('SELECT 1 FROM clienti_aziende WHERE id = $1', [clienteId]);
+                                isAziendaCheck = r.rowCount > 0;
+                            } catch {}
+                            const table = isAziendaCheck ? 'clienti_aziende' : 'clienti_privati';
+                            const upd = await pool.query(`UPDATE ${table} SET assigned_agent_id = $1 WHERE id = $2`, [assignedUserId, clienteId]);
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: update assigned_agent_id su ${table} da contratto_luce cliente_id=${clienteId}, changes=${upd.rowCount}`);
                         } catch (e) {
                             activeImports[importId].result.warnings.push(`Riga ${rowNum}: impossibile aggiornare assegnazione agente da contratto_luce (${(e as any)?.message || 'errore'})`);
                         }
@@ -1302,14 +1367,17 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                     if (!clienteId || clienteId === '0' || clienteId === 'null' || clienteId === 'undefined') {
                         throw new Error('Associazione cliente fallita: id cliente non valido per contratto_gas');
                     }
-                    // Aggiorna assegnazione agente anche su contratti, se disponibile
+                    // Aggiorna assegnazione agente sul cliente trovato, se disponibile
                     if (assignedUserId && !options.dryRun) {
                         try {
-                            const cols = await getTableColumns('clienti_privati');
-                            if (cols.includes('assigned_agent_id')) {
-                                const upd = await pool.query(`UPDATE clienti_privati SET assigned_agent_id = $1 WHERE id = $2`, [assignedUserId, clienteId]);
-                                activeImports[importId].result.warnings.push(`Riga ${rowNum}: update assigned_agent_id da contratto_gas cliente_id=${clienteId}, changes=${upd.rowCount}`);
-                            }
+                            let isAziendaCheck = false;
+                            try {
+                                const r = await pool.query('SELECT 1 FROM clienti_aziende WHERE id = $1', [clienteId]);
+                                isAziendaCheck = r.rowCount > 0;
+                            } catch {}
+                            const table = isAziendaCheck ? 'clienti_aziende' : 'clienti_privati';
+                            const upd = await pool.query(`UPDATE ${table} SET assigned_agent_id = $1 WHERE id = $2`, [assignedUserId, clienteId]);
+                            activeImports[importId].result.warnings.push(`Riga ${rowNum}: update assigned_agent_id su ${table} da contratto_gas cliente_id=${clienteId}, changes=${upd.rowCount}`);
                         } catch (e) {
                             activeImports[importId].result.warnings.push(`Riga ${rowNum}: impossibile aggiornare assegnazione agente da contratto_gas (${(e as any)?.message || 'errore'})`);
                         }

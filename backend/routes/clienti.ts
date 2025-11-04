@@ -802,29 +802,74 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
         const findUserIdByName = async (nameRaw: any): Promise<string | null> => {
             const fullName = normalizeValue(nameRaw);
             if (!fullName) return null;
-            const cleaned = String(fullName).replace(/\s+/g, ' ').trim();
+            const normalize = (s: string) => s
+                .replace(/\s+/g, ' ')
+                .replace(/[\'\.\-,]/g, '')
+                .trim()
+                .toLowerCase();
+            const cleaned = normalize(String(fullName));
             if (!cleaned) return null;
             try {
-                // Match esatto su "nome cognome"
+                // Match esatto su nome+cognome normalizzati (entrambe le combinazioni)
                 const rExact = await pool.query(
-                    `SELECT id FROM users WHERE LOWER(nome || ' ' || cognome) = LOWER(?) LIMIT 1`,
-                    [cleaned]
+                    `SELECT id FROM users WHERE 
+                        LOWER(REPLACE(REPLACE(REPLACE(TRIM(nome || ' ' || cognome), '''', ''), '.', ''), ',', '')) = LOWER(?)
+                     OR LOWER(REPLACE(REPLACE(REPLACE(TRIM(cognome || ' ' || nome), '''', ''), '.', ''), ',', '')) = LOWER(?)
+                     LIMIT 1`,
+                    [cleaned, cleaned]
                 );
                 if (rExact.rows && rExact.rows.length > 0) {
                     return (rExact.rows[0] as any).id || null;
                 }
 
-                // Fallback: split per ricavare nome e cognome (prima e ultima parola)
+                // Fallback: split per ricavare nome e cognome (prima parola e resto)
                 const parts = cleaned.split(' ');
                 const first = parts[0];
-                const last = parts[parts.length - 1];
+                const last = parts.slice(1).join(' ');
                 if (first && last) {
                     const rSplit = await pool.query(
-                        `SELECT id FROM users WHERE LOWER(nome) = LOWER(?) AND LOWER(cognome) = LOWER(?) LIMIT 1`,
+                        `SELECT id FROM users WHERE 
+                            LOWER(REPLACE(TRIM(nome), '''', '')) = LOWER(?) 
+                        AND LOWER(REPLACE(TRIM(cognome), '''', '')) = LOWER(?)
+                         LIMIT 1`,
                         [first, last]
                     );
                     if (rSplit.rows && rSplit.rows.length > 0) {
                         return (rSplit.rows[0] as any).id || null;
+                    }
+                    // Fallback fuzzy: LIKE su nome e cognome
+                    const rLike = await pool.query(
+                        `SELECT id FROM users WHERE 
+                            LOWER(REPLACE(TRIM(nome), '''', '')) LIKE LOWER('%' || ? || '%') 
+                        AND LOWER(REPLACE(TRIM(cognome), '''', '')) LIKE LOWER('%' || ? || '%')
+                         LIMIT 1`,
+                        [first, last]
+                    );
+                    if (rLike.rows && rLike.rows.length > 0) {
+                        return (rLike.rows[0] as any).id || null;
+                    }
+                } else {
+                    // Fallback singolo token su nome o cognome
+                    const rSingle = await pool.query(
+                        `SELECT id FROM users WHERE 
+                            LOWER(REPLACE(TRIM(nome), '''', '')) = LOWER(?) 
+                         OR LOWER(REPLACE(TRIM(cognome), '''', '')) = LOWER(?)
+                         LIMIT 1`,
+                        [cleaned, cleaned]
+                    );
+                    if (rSingle.rows && rSingle.rows.length > 0) {
+                        return (rSingle.rows[0] as any).id || null;
+                    }
+                    // Fallback fuzzy: LIKE su singolo token
+                    const rSingleLike = await pool.query(
+                        `SELECT id FROM users WHERE 
+                            LOWER(REPLACE(TRIM(nome), '''', '')) LIKE LOWER('%' || ? || '%') 
+                         OR LOWER(REPLACE(TRIM(cognome), '''', '')) LIKE LOWER('%' || ? || '%')
+                         LIMIT 1`,
+                        [cleaned, cleaned]
+                    );
+                    if (rSingleLike.rows && rSingleLike.rows.length > 0) {
+                        return (rSingleLike.rows[0] as any).id || null;
                     }
                 }
             } catch { /* ignore */ }
@@ -835,9 +880,18 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
             // Supporta varianti di campo
             const rawId = normalizeValue(record.assigned_agent_id) || normalizeValue(record.agente_id);
             const rawEmail = normalizeValue(record.assigned_agent_email) || normalizeValue(record.agente_email);
-            const rawName = normalizeValue(record.assigned_agent_name) || normalizeValue(record.agente_nome);
+            const rawAssignedName = normalizeValue(record.assigned_agent_name);
+            const rawAgenteNome = normalizeValue(record.agente_nome);
 
-            // 1) ID esplicito se UUID valido e esiste
+            // PRIORITÀ ASSOLUTA: se è presente 'agente_nome', usa SOLO quello
+            if (rawAgenteNome) {
+                const byAgenteNome = await findUserIdByName(rawAgenteNome);
+                if (byAgenteNome) return byAgenteNome;
+                // Se non trovato, non tentare altri campi per rispettare il requisito "solo agente_nome"
+                return null;
+            }
+
+            // 1) ID esplicito se UUID valido e esiste (quando agente_nome NON è presente)
             if (rawId && typeof rawId === 'string') {
                 if (isValidUuid(rawId)) {
                     try {
@@ -857,13 +911,13 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
                 }
             }
 
-            // 2) Email esplicita
+            // 2) Email esplicita (quando agente_nome NON è presente)
             const byEmail = await findUserIdByEmail(rawEmail);
             if (byEmail) return byEmail;
 
-            // 3) Nome esplicito
-            const byName = await findUserIdByName(rawName);
-            if (byName) return byName;
+            // 3) Nome esplicito (assigned_agent_name) come fallback (quando agente_nome NON è presente)
+            const byAssignedName = await findUserIdByName(rawAssignedName);
+            if (byAssignedName) return byAssignedName;
 
             // 4) Fallback: se l'utente corrente è operatore/agent, usa il suo id
             if (currentUser && (currentUser.role === 'operatore' || currentUser.role === 'agent')) {

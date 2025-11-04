@@ -40,7 +40,8 @@ import unifiedImportRoutes from './routes/unified-import'; // 🆕 SISTEMA IMPOR
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+// Forza l'ascolto su 3001 per evitare override da variabili d'ambiente
+const PORT = 3001;
 
 // Middleware
 app.use(helmet()); // Security headers
