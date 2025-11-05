@@ -12,8 +12,9 @@ services:
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
-      - --entrypoints.web.http.redirections.entryPoint.to=websecure
-      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      # Temporarily disable automatic HTTP->HTTPS redirection to allow access while LE rate limits are active
+      # - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      # - --entrypoints.web.http.redirections.entryPoint.scheme=https
       - --certificatesresolvers.le.acme.httpchallenge=true
       - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
       - --certificatesresolvers.le.acme.email=admin@gmgestionale.cloud
@@ -184,8 +185,9 @@ services:
       # Router HTTP con redirect automatico a HTTPS
       - "traefik.http.routers.gmgestionale-http.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
       - "traefik.http.routers.gmgestionale-http.entrypoints=web"
-      - "traefik.http.routers.gmgestionale-http.middlewares=gmgestionale-redirect"
-      - "traefik.http.middlewares.gmgestionale-redirect.redirectscheme.scheme=https"
+      # Temporarily disable redirect middleware on HTTP router
+      # - "traefik.http.routers.gmgestionale-http.middlewares=gmgestionale-redirect"
+      # - "traefik.http.middlewares.gmgestionale-redirect.redirectscheme.scheme=https"
       # Router HTTPS con TLS e Let's Encrypt
       - "traefik.http.routers.gmgestionale-https.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
       - "traefik.http.routers.gmgestionale-https.entrypoints=websecure"
