@@ -170,6 +170,58 @@ function patchSchemaIfNeeded() {
   }
 }
 
+// Configurazioni: assicura la tabella e alcuni valori di default
+function ensureConfigurazioniTableAndDefaults() {
+  try {
+    const db = new Database(dbPath);
+
+    const tableExists = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='configurazioni'")
+      .get();
+
+    if (!tableExists) {
+      console.log('🔧 Creazione tabella configurazioni...');
+      db.exec(`
+        CREATE TABLE configurazioni (
+          chiave TEXT PRIMARY KEY,
+          valore TEXT,
+          categoria TEXT NOT NULL DEFAULT 'email',
+          descrizione TEXT,
+          encrypted INTEGER NOT NULL DEFAULT 0,
+          updated_at TEXT,
+          updated_by TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_config_categoria ON configurazioni(categoria);
+      `);
+      console.log('   ✅ Tabella configurazioni creata');
+    } else {
+      console.log('   ✅ Tabella configurazioni già presente');
+    }
+
+    // Defaults Brevo/Email: INSERT OR IGNORE per idempotenza
+    const insert = db.prepare(
+      `INSERT OR IGNORE INTO configurazioni (chiave, valore, categoria, descrizione, encrypted, updated_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'))`
+    );
+    const defaults = [
+      ['brevo_smtp_host', '', 'email', 'Host SMTP Brevo', 0],
+      ['brevo_smtp_port', '587', 'email', 'Porta SMTP Brevo', 0],
+      ['brevo_smtp_user', '', 'email', 'User SMTP Brevo', 0],
+      ['brevo_smtp_pass', '', 'email', 'Password/API SMTP Brevo', 1],
+      ['brevo_api_key', '', 'email', 'API Key Brevo', 1],
+      ['email_sender_name', 'Gestionale Energia', 'email', 'Nome mittente', 0],
+      ['email_sender_address', '', 'email', 'Indirizzo mittente', 0],
+      ['unsubscribe_base_url', '', 'email', 'Base URL link disiscrizione', 0]
+    ];
+    for (const d of defaults) insert.run(d);
+
+    db.close();
+    console.log('✅ Tabella configurazioni pronta con defaults');
+  } catch (err) {
+    console.error('❌ Errore migrazione configurazioni:', err);
+  }
+}
+
 // Patch schema clienti: assicura colonne estese per clienti_privati e clienti_aziende
 function patchClientColumnsIfNeeded() {
   try {
@@ -445,6 +497,8 @@ ensureDatabaseMigrated();
 relaxClientNullConstraintsIfNeeded();
 // Applica patch schema per garantire colonne richieste dalle query runtime
 patchSchemaIfNeeded();
+// Garantisce la tabella configurazioni e valori minimi per SMTP
+ensureConfigurazioniTableAndDefaults();
 // Applica patch clienti per garantire colonne estese
 patchClientColumnsIfNeeded();
 startServer();
