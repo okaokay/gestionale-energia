@@ -9,8 +9,8 @@ services:
       - PORT=3001
       - JWT_SECRET=your-super-secure-jwt-secret-key-change-this-in-production-2024
       - JWT_EXPIRES_IN=7d
-      - DATABASE_PATH=/app/gestionale_energia.db
-      - DATABASE_URL=sqlite:./gestionale_energia.db
+      - DATABASE_PATH=/app/data/gestionale_energia.db
+      - DATABASE_URL=sqlite:/app/data/gestionale_energia.db
       - FRONTEND_URL=https://gmgestionale.cloud
       - BACKEND_URL=https://gmgestionale.cloud
       - CORS_ORIGIN=https://gmgestionale.cloud
@@ -26,7 +26,7 @@ services:
     volumes:
       - ./uploads:/app/uploads
       - ./backend/database:/app/backend/database
-      - ./gestionale_energia.db:/app/gestionale_energia.db
+      - ./gestionale_energia.db:/app/data/gestionale_energia.db
     networks:
       - gestionale_network
     healthcheck:

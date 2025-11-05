@@ -1280,9 +1280,9 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=./gestionale_energia.db
+      - DATABASE_PATH=/app/data/gestionale_energia.db
     volumes:
-      - ./gestionale_energia.db:/app/gestionale_energia.db
+      - ./gestionale_energia.db:/app/data/gestionale_energia.db
       - ./uploads:/app/uploads
     depends_on:
       - redis

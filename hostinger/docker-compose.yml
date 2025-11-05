@@ -14,6 +14,7 @@ services:
       - PORT=3001
       - TZ=Europe/Rome
       - LOG_LEVEL=info
+      - FORCE_SEED_RESTORE=true
       - FRONTEND_URL=http://gmgestionale.cloud
       - BACKEND_URL=http://gmgestionale.cloud
       - CORS_ORIGIN=http://gmgestionale.cloud
@@ -21,11 +22,18 @@ services:
       - TRUST_PROXY=true
       - JWT_SECRET=${JWT_SECRET:-change-me-please-2024}
       - JWT_EXPIRES_IN=7d
-      - DATABASE_PATH=/app/backend/database/database.sqlite
+      - DATABASE_PATH=/app/data/gestionale_energia.db
       - INIT_DB=true
+      # Brevo/Email configuration (replace placeholders before deploy)
+      - EMAIL_SENDER_NAME=Gestionale Energia
+      - EMAIL_SENDER_ADDRESS=noreply@gmgestionale.cloud
+      - BREVO_SMTP_USER=apikey
+      # Usa la stessa API Key come password SMTP (pattern Brevo)
+      - BREVO_API_KEY=REPLACE_WITH_BREVO_API_KEY
+      - BREVO_SMTP_PASS=${BREVO_API_KEY}
     volumes:
       - uploads_data:/app/uploads
-      - database_data:/app/backend/database
+      - database_data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:3001/health"]
       interval: 30s

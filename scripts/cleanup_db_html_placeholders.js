@@ -5,8 +5,8 @@ function getDbPath() {
   // Try env var first, fallback to default path used in compose
   const envPath = process.env.DATABASE_PATH || process.env.DB_PATH;
   if (envPath) return envPath;
-  // In compose.prod.yml we mount ./gestionale_energia.db to /app/gestionale_energia.db
-  return '/app/gestionale_energia.db';
+  // Default fallback aligned to new compose: /app/data/gestionale_energia.db
+  return '/app/data/gestionale_energia.db';
 }
 
 function cleanup() {

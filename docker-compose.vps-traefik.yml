@@ -43,10 +43,14 @@ services:
       FRONTEND_URL: https://gmgestionale.cloud
       BACKEND_URL: https://gmgestionale.cloud/api
       IS_DOCKER: "true"
+      DATABASE_PATH: /app/data/gestionale_energia.db
     # Usa il CMD del Dockerfile (scripts/start-with-migrate.js)
     restart: unless-stopped
     expose:
       - "3001"
+    volumes:
+      - uploads_data:/app/uploads
+      - database_data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 20s
@@ -62,8 +66,9 @@ services:
     depends_on:
       - app
     # Evita mount di file locali non presenti su Docker Manager
+    # Usa heredoc con shell login (-l) per compatibilità su alpine
     command: |
-      sh -c 'cat <<"EOF" > /etc/nginx/nginx.conf
+      sh -lc 'cat <<"EOF" > /etc/nginx/nginx.conf
       events {
           worker_connections 1024;
       }
@@ -175,9 +180,17 @@ services:
       - "80"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.gmgestionale.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
-      - "traefik.http.routers.gmgestionale.entrypoints=websecure"
-      - "traefik.http.routers.gmgestionale.tls.certresolver=le"
+      - "traefik.docker.network=proxy"
+      # Router HTTP con redirect automatico a HTTPS
+      - "traefik.http.routers.gmgestionale-http.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
+      - "traefik.http.routers.gmgestionale-http.entrypoints=web"
+      - "traefik.http.routers.gmgestionale-http.middlewares=gmgestionale-redirect"
+      - "traefik.http.middlewares.gmgestionale-redirect.redirectscheme.scheme=https"
+      # Router HTTPS con TLS e Let's Encrypt
+      - "traefik.http.routers.gmgestionale-https.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
+      - "traefik.http.routers.gmgestionale-https.entrypoints=websecure"
+      - "traefik.http.routers.gmgestionale-https.tls=true"
+      - "traefik.http.routers.gmgestionale-https.tls.certresolver=le"
       - "traefik.http.services.gmgestionale.loadbalancer.server.port=80"
     networks:
       - proxy
@@ -188,4 +201,6 @@ networks:
 
 volumes:
   traefik-certs:
+  uploads_data:
+  database_data:
     driver: local

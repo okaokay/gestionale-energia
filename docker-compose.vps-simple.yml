@@ -12,7 +12,8 @@ services:
       - --entrypoints.websecure.address=:443
       - --entrypoints.web.http.redirections.entryPoint.to=websecure
       - --entrypoints.web.http.redirections.entryPoint.scheme=https
-      - --certificatesresolvers.le.acme.tlschallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
       - --certificatesresolvers.le.acme.email=admin@gmgestionale.cloud
       - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
       - --accesslog=true
@@ -39,18 +40,26 @@ services:
       PORT: 3001
       TZ: Europe/Rome
       IS_DOCKER: "true"
+      FORCE_SEED_RESTORE: "true"
       # URL applicazione
       FRONTEND_URL: https://gmgestionale.cloud
       BACKEND_URL: https://gmgestionale.cloud
       CORS_ORIGIN: https://gmgestionale.cloud,https://www.gmgestionale.cloud
-      # Database (SQLite persistito nel container)
-      DATABASE_PATH: /app/gestionale_energia.db
+      # Proxy e cookie sicuri dietro Traefik
+      TRUST_PROXY: "true"
+      SECURE_COOKIES: "true"
+      # Database (SQLite su volume persistente)
+      DATABASE_PATH: /app/data/gestionale_energia.db
       # JWT
       JWT_SECRET: super-secure-random-jwt-key-change-later-2025-10-31-gmgestionale
       JWT_EXPIRES_IN: 7d
       # Email mittente (opzionale)
       EMAIL_SENDER_NAME: Gestionale Energia
       EMAIL_SENDER_ADDRESS: noreply@gmgestionale.cloud
+      # Brevo SMTP/API (sostituisci la API key prima del deploy)
+      BREVO_SMTP_USER: apikey
+      BREVO_SMTP_PASS: REPLACE_WITH_BREVO_API_KEY
+      BREVO_API_KEY: REPLACE_WITH_BREVO_API_KEY
       # Redis (opzionale)
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6379
@@ -58,6 +67,9 @@ services:
       CRON_ENABLED: "true"
       CRON_EXPIRY_ALERTS: 0 9 * * *
     restart: unless-stopped
+    volumes:
+      - uploads_data:/app/uploads
+      - database_data:/app/data
     expose:
       - "3001"
     healthcheck:
@@ -68,6 +80,7 @@ services:
       start_period: 40s
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
       - "traefik.http.routers.gmgestionale.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
       - "traefik.http.routers.gmgestionale.entrypoints=websecure"
       - "traefik.http.routers.gmgestionale.tls.certresolver=le"
@@ -81,6 +94,10 @@ services:
 
 volumes:
   traefik-certs:
+    driver: local
+  uploads_data:
+    driver: local
+  database_data:
     driver: local
 
 networks:

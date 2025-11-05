@@ -30,14 +30,14 @@ services:
       - TZ=Europe/Rome
       - JWT_SECRET=your-super-secret-jwt-key-change-this-hostinger-2024
       - JWT_EXPIRES_IN=7d
-      - DATABASE_PATH=/app/gestionale_energia.db  # ✅ Path corretto
+      - DATABASE_PATH=/app/data/gestionale_energia.db  # ✅ Path corretto
       - FRONTEND_URL=http://localhost:8080
       - BACKEND_URL=http://localhost:8080
     ports:
       - "8080:3001"  # ✅ Mapping corretto
     volumes:
       - uploads_data:/app/uploads
-      - database_data:/app  # ✅ Volume corretto
+      - database_data:/app/data  # ✅ Volume corretto
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
       interval: 30s
@@ -85,7 +85,7 @@ docker ps
 curl http://localhost:8080/health
 
 # Verifica database
-docker exec -it gestionale-energia-app ls -la /app/
+docker exec -it gestionale-energia-app ls -la /app/data/
 ```
 
 ## 🌐 URL di Accesso
@@ -130,10 +130,10 @@ docker-compose -f docker-compose.hostinger.yml up -d --build
 docker exec -it gestionale-energia-app sh
 
 # Verifica file database
-ls -la /app/gestionale_energia.db
+ls -la /app/data/gestionale_energia.db
 
 # Controlla permessi
-chmod 666 /app/gestionale_energia.db
+chmod 666 /app/data/gestionale_energia.db
 ```
 
 ## 📝 Note Finali
