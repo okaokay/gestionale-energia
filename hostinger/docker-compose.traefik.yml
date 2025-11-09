@@ -9,7 +9,10 @@ services:
       - --api.dashboard=true
       # Usa file provider (Hostinger non permette Docker socket)
       - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
       - --entrypoints.web.address=:3001
+      - --log.level=DEBUG
+      - --accesslog=true
     ports:
       - "3001:3001"
     volumes:
