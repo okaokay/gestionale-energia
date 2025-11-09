@@ -25,8 +25,10 @@ services:
       - gestionale_net
 
   gestionale-energia:
-    # Usa immagine già pubblicata per funzionare con "Componi via URL" su Hostinger
-    image: okaokay/gestionale-energia:prod
+    # Builda direttamente l'immagine dal repository clonato (evita registry esterni)
+    build:
+      context: ..
+      dockerfile: Dockerfile
     container_name: gestionale-energia
     restart: unless-stopped
     environment:
