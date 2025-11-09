@@ -85,15 +85,32 @@ function parseCsvSimple(content: string) {
     if (lines.length < 2) return { headers: [], records: [] };
 
     const headerLine = lines[0].replace(/^\uFEFF/, '');
-    const headers = headerLine.split(',').map(h => h.trim().replace(/(^"|"$)/g, ''));
+    // Rilevamento automatico del delimitatore: preferisci quello con più occorrenze
+    const commaCount = (headerLine.match(/,/g) || []).length;
+    const semicolonCount = (headerLine.match(/;/g) || []).length;
+    const tabCount = (headerLine.match(/\t/g) || []).length;
+    let delimiter = ',';
+    if (semicolonCount > commaCount && semicolonCount >= tabCount) {
+        delimiter = ';';
+    } else if (tabCount > commaCount && tabCount > semicolonCount) {
+        delimiter = '\t';
+    }
+
+    // Normalizza le intestazioni: lowercase e sostituzione spazi con underscore
+    const normalizeHeader = (h: string) => h
+        .trim()
+        .replace(/(^"|"$)/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, '_');
+    const headers = headerLine.split(delimiter).map(normalizeHeader);
 
     const records: Array<Record<string, string>> = [];
     for (let i = 1; i < lines.length; i++) {
         let raw = lines[i];
         if (!raw.trim()) continue;
         raw = raw.replace(/^\uFEFF/, '');
-        // Nota: parsing semplice; per campi con virgole in quote, puoi passare a csv-parse
-        const values = raw.split(',').map(v => v.trim().replace(/(^"|"$)/g, ''));
+        // Nota: parsing semplice; per campi con delimitatore in quote, usa csv-parse
+        const values = raw.split(delimiter).map(v => v.trim().replace(/(^"|"$)/g, ''));
         const record: Record<string, string> = {};
         headers.forEach((h, idx) => {
             record[h] = values[idx] || '';

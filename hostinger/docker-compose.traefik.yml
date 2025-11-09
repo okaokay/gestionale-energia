@@ -25,9 +25,8 @@ services:
       - gestionale_net
 
   gestionale-energia:
-    build:
-      context: ..
-      dockerfile: Dockerfile
+    # Usa immagine già pubblicata per funzionare con "Componi via URL" su Hostinger
+    image: okaokay/gestionale-energia:prod
     container_name: gestionale-energia
     restart: unless-stopped
     environment:
@@ -42,11 +41,18 @@ services:
       - TRUST_PROXY=true
       - JWT_SECRET=${JWT_SECRET:-change-me-please-2024}
       - JWT_EXPIRES_IN=7d
-      - DATABASE_PATH=/app/backend/database/database.sqlite
+      - DATABASE_PATH=/app/data/gestionale_energia.db
       - INIT_DB=true
+      - FORCE_SEED_RESTORE=true
+      # Brevo/Email configuration (replace placeholders before deploy)
+      - EMAIL_SENDER_NAME=Gestionale Energia
+      - EMAIL_SENDER_ADDRESS=noreply@gmgestionale.cloud
+      - BREVO_SMTP_USER=apikey
+      - BREVO_API_KEY=REPLACE_WITH_BREVO_API_KEY
+      - BREVO_SMTP_PASS=${BREVO_API_KEY}
     volumes:
       - uploads_data:/app/uploads
-      - database_data:/app/backend/database
+      - database_data:/app/data
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/health"]
       interval: 30s

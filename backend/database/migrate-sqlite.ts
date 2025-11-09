@@ -130,6 +130,98 @@ async function runMigration() {
         console.log('✅ Tabelle contratti create');
 
         // ===============================================
+        // TABELLE: gestione azioni/promemoria/SMS/AI cliente
+        // ===============================================
+        console.log('👤 Creazione tabelle attività cliente...');
+        db.exec(`
+            -- Storico azioni cliente
+            CREATE TABLE IF NOT EXISTS cliente_azioni (
+                id TEXT PRIMARY KEY,
+                cliente_id TEXT NOT NULL,
+                tipo_cliente TEXT NOT NULL CHECK (tipo_cliente IN ('privato','azienda')),
+                tipo_azione TEXT NOT NULL,
+                titolo TEXT NOT NULL,
+                descrizione TEXT,
+                esito TEXT,
+                utente_id TEXT,
+                metadata TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_cliente_azioni_cliente ON cliente_azioni(cliente_id);
+            CREATE INDEX IF NOT EXISTS idx_cliente_azioni_tipo ON cliente_azioni(tipo_cliente);
+            CREATE INDEX IF NOT EXISTS idx_cliente_azioni_created ON cliente_azioni(created_at);
+
+            -- Promemoria / follow-up cliente
+            CREATE TABLE IF NOT EXISTS cliente_promemoria (
+                id TEXT PRIMARY KEY,
+                cliente_id TEXT NOT NULL,
+                tipo_cliente TEXT NOT NULL CHECK (tipo_cliente IN ('privato','azienda')),
+                titolo TEXT NOT NULL,
+                descrizione TEXT,
+                tipo_promemoria TEXT NOT NULL,
+                data_scadenza TEXT,
+                priorita TEXT DEFAULT 'media',
+                stato TEXT DEFAULT 'attivo',
+                assegnato_a TEXT,
+                created_by TEXT,
+                completato_da TEXT,
+                completato_il TEXT,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_cliente_promemoria_cliente ON cliente_promemoria(cliente_id);
+            CREATE INDEX IF NOT EXISTS idx_cliente_promemoria_scadenza ON cliente_promemoria(data_scadenza);
+            CREATE INDEX IF NOT EXISTS idx_cliente_promemoria_stato ON cliente_promemoria(stato);
+
+            -- SMS cliente
+            CREATE TABLE IF NOT EXISTS cliente_sms (
+                id TEXT PRIMARY KEY,
+                cliente_id TEXT NOT NULL,
+                tipo_cliente TEXT NOT NULL CHECK (tipo_cliente IN ('privato','azienda')),
+                numero_destinatario TEXT NOT NULL,
+                testo TEXT NOT NULL,
+                stato TEXT DEFAULT 'in_coda',
+                inviato_da TEXT,
+                inviato_il TEXT DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_cliente_sms_cliente ON cliente_sms(cliente_id);
+            CREATE INDEX IF NOT EXISTS idx_cliente_sms_inviato_il ON cliente_sms(inviato_il);
+
+            -- Suggerimenti AI per cliente
+            CREATE TABLE IF NOT EXISTS cliente_ai_suggerimenti (
+                id TEXT PRIMARY KEY,
+                cliente_id TEXT NOT NULL,
+                tipo_cliente TEXT NOT NULL CHECK (tipo_cliente IN ('privato','azienda')),
+                tipo_suggerimento TEXT NOT NULL,
+                titolo TEXT NOT NULL,
+                descrizione TEXT,
+                azione_suggerita TEXT,
+                priorita INTEGER DEFAULT 5,
+                motivo TEXT,
+                stato TEXT DEFAULT 'attivo',
+                applicato_da TEXT,
+                applicato_il TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_cliente_ai_cliente ON cliente_ai_suggerimenti(cliente_id);
+            CREATE INDEX IF NOT EXISTS idx_cliente_ai_stato ON cliente_ai_suggerimenti(stato);
+            CREATE INDEX IF NOT EXISTS idx_cliente_ai_priorita ON cliente_ai_suggerimenti(priorita);
+        `);
+        console.log('✅ Tabelle attività cliente create');
+
+        // Colonne per ultimo contatto sui clienti (usate dalle rotte clientActions)
+        console.log('🔧 Verifica/Aggiunta colonne ultimo contatto su clienti...');
+        try { db.exec("ALTER TABLE clienti_privati ADD COLUMN data_ultimo_contatto TEXT"); console.log('   ✅ clienti_privati.data_ultimo_contatto aggiunta'); } catch (e:any) { if ((e.message||'').includes('duplicate column name')) { console.log('   ⚠️  clienti_privati.data_ultimo_contatto già presente'); } else { console.log('   ⚠️  Impossibile aggiungere data_ultimo_contatto su clienti_privati:', e.message||e); } }
+        try { db.exec("ALTER TABLE clienti_privati ADD COLUMN tipo_ultimo_contatto TEXT"); console.log('   ✅ clienti_privati.tipo_ultimo_contatto aggiunta'); } catch (e:any) { if ((e.message||'').includes('duplicate column name')) { console.log('   ⚠️  clienti_privati.tipo_ultimo_contatto già presente'); } else { console.log('   ⚠️  Impossibile aggiungere tipo_ultimo_contatto su clienti_privati:', e.message||e); } }
+        try { db.exec("ALTER TABLE clienti_aziende ADD COLUMN data_ultimo_contatto TEXT"); console.log('   ✅ clienti_aziende.data_ultimo_contatto aggiunta'); } catch (e:any) { if ((e.message||'').includes('duplicate column name')) { console.log('   ⚠️  clienti_aziende.data_ultimo_contatto già presente'); } else { console.log('   ⚠️  Impossibile aggiungere data_ultimo_contatto su clienti_aziende:', e.message||e); } }
+        try { db.exec("ALTER TABLE clienti_aziende ADD COLUMN tipo_ultimo_contatto TEXT"); console.log('   ✅ clienti_aziende.tipo_ultimo_contatto aggiunta'); } catch (e:any) { if ((e.message||'').includes('duplicate column name')) { console.log('   ⚠️  clienti_aziende.tipo_ultimo_contatto già presente'); } else { console.log('   ⚠️  Impossibile aggiungere tipo_ultimo_contatto su clienti_aziende:', e.message||e); } }
+
+        // ===============================================
         // TABELLA: contabilita_movimenti
         // ===============================================
         console.log('💰 Creazione tabella contabilita_movimenti...');

@@ -117,6 +117,13 @@ export default function ClientiPage() {
     const [contrattiStati, setContrattiStati] = useState<{[contractId: string]: string}>({});
     // Dettagli contratti per cliente (mappa tipo_idCliente -> array contratti)
     const [contrattiDettagli, setContrattiDettagli] = useState<{[clienteKey: string]: any[]}>({});
+
+    // Paginazione
+    const [page, setPage] = useState(1);
+    const [limit] = useState(200);
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
+    const [loadingMore, setLoadingMore] = useState(false);
     
     // Filtri
     const [filters, setFilters] = useState<FilterState>({
@@ -137,6 +144,8 @@ export default function ClientiPage() {
         aziende: 0,
         conContratti: 0
     });
+    // Flag per indicare che i KPI provengono dal backend
+    const [hasServerTotals, setHasServerTotals] = useState(false);
 
     // Carica newsletter e agenti all'avvio
     useEffect(() => {
@@ -148,7 +157,7 @@ export default function ClientiPage() {
     useEffect(() => {
         if (location.pathname === '/clienti') {
             console.log('🔄 Caricamento iniziale pagina clienti');
-            loadClienti();
+            loadClienti({ page: 1, append: false });
         }
     }, [location.pathname]); // Carica solo quando si cambia pathname
     
@@ -158,7 +167,8 @@ export default function ClientiPage() {
         const hasActiveFilters = Object.values(filters).some(value => value !== '');
         if (hasActiveFilters) {
             console.log('🔄 Filters changed');
-            loadClienti();
+            setPage(1);
+            loadClienti({ page: 1, append: false });
         }
     }, [filters]);
 
@@ -216,7 +226,8 @@ export default function ClientiPage() {
     useEffect(() => {
         if (clientiRefreshKey > 0 && location.pathname === '/clienti') {
             console.log('🔄 RefreshKey triggered reload:', clientiRefreshKey);
-            loadClienti();
+            setPage(1);
+            loadClienti({ page: 1, append: false });
         }
     }, [clientiRefreshKey]);
 
@@ -395,22 +406,34 @@ export default function ClientiPage() {
         loadClienti();
     };
 
-    const loadClienti = async () => {
+    const loadClienti = async (opts?: { page?: number; append?: boolean }) => {
         try {
-            setLoading(true);
-            // Reset dei dati durante il caricamento per evitare visualizzazioni inconsistenti
-            setClienti([]);
-            setContrattiStati({});
-            setContrattiDettagli({});
+            const currentPage = opts?.page ?? page ?? 1;
+            const append = opts?.append ?? false;
+            if (!append) {
+                setLoading(true);
+                // Reset dei dati durante il caricamento per evitare visualizzazioni inconsistenti
+                setClienti([]);
+                setContrattiStati({});
+                setContrattiDettagli({});
+            } else {
+                setLoadingMore(true);
+            }
             console.log('🔄 loadClienti chiamato - timestamp:', new Date().toISOString());
             
             const response = await clientiAPI.getAll({ 
                 search: filters.search, 
                 tipo: filters.tipo, 
-                limit: 200,
+                contratti: filters.haContratti || undefined,
+                limit,
+                page: currentPage,
                 _t: Date.now() // Cache busting
             });
             const allClienti = response.data.data.clienti;
+            const pagination = response?.data?.data?.pagination || {};
+            setTotal(pagination.total || (Array.isArray(allClienti) ? allClienti.length : 0));
+            setTotalPages(pagination.totalPages || 1);
+            setPage(currentPage);
             
             console.log('📦 Clienti ricevuti dal backend:', allClienti.length);
             const toni = allClienti.find((c: any) => 
@@ -423,6 +446,18 @@ export default function ClientiPage() {
                 console.log('   ID:', toni.id);
             }
             
+            // Aggiorna KPI con i totali dal backend (non limitati dalla pagina)
+            const totals = response?.data?.data?.totals;
+            if (totals && typeof totals === 'object') {
+                setStats({
+                    totale: totals.totale ?? 0,
+                    privati: totals.privati ?? 0,
+                    aziende: totals.aziende ?? 0,
+                    conContratti: totals.conContratti ?? 0
+                });
+                setHasServerTotals(true);
+            }
+
             // Applica filtri lato client
             let filtered = allClienti;
             
@@ -436,6 +471,13 @@ export default function ClientiPage() {
                 filtered = filtered.filter((c: any) => 
                     (c.provincia || '').toLowerCase() === filters.provincia.toLowerCase()
                 );
+            }
+            // Filtro combinazioni contratti (luce/gas/entrambi) lato client
+            // Evita doppio filtro se già applicato lato server
+            if (!filters.haContratti) {
+                // Nessun filtro lato server: opzionale filtro locale
+                // (manteniamo compatibilità in caso di sorgenti alternative)
+                // Nota: quando filters.haContratti è impostato, il backend filtra già
             }
 
             if (filters.consensoMarketing) {
@@ -461,21 +503,43 @@ export default function ClientiPage() {
                 });
             }
             
-            setClienti(filtered);
+            if (append) {
+                // Appendi evitando duplicati per id
+                setClienti((prev) => {
+                    const byId = new Map<string, any>();
+                    prev.forEach((c: any) => byId.set(String(c.id), c));
+                    filtered.forEach((c: any) => byId.set(String(c.id), c));
+                    return Array.from(byId.values());
+                });
+            } else {
+                setClienti(filtered);
+            }
 
         } catch (error) {
             toast.error('Errore caricamento clienti');
         } finally {
             setLoading(false);
+            setLoadingMore(false);
         }
     };
 
+    const handleLoadMore = () => {
+        if (page >= totalPages) return;
+        loadClienti({ page: page + 1, append: true });
+    };
+
+    const handlePageClick = (p: number) => {
+        loadClienti({ page: p, append: false });
+        try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch {}
+    };
+
     const calculateStats = () => {
+        // Se abbiamo già i totali dal backend, non sovrascrivere i KPI
+        if (hasServerTotals) return;
         const totale = clienti.length;
         const privati = clienti.filter(c => c.tipo === 'privato').length;
         const aziende = clienti.filter(c => c.tipo === 'azienda').length;
         const conContratti = clienti.filter(c => (c.num_contratti || 0) > 0).length;
-        
         setStats({ totale, privati, aziende, conContratti });
     };
 
@@ -982,8 +1046,11 @@ export default function ClientiPage() {
                 
                 const tipo = cliente.tipo === 'privato' ? 'privati' : 'aziende';
                 await clientiAPI.delete(tipo, clienteId);
+                // Rimuovi subito dal locale per feedback immediato
+                setClienti(prev => prev.filter(c => c.id !== clienteId));
                 toast.success('✅ Cliente eliminato con successo');
-                loadClienti();
+                // Ricarica la pagina corrente per coerenza con la paginazione
+                await loadClienti({ page, append: false });
             } catch (error) {
                 console.error('Errore eliminazione cliente:', error);
                 toast.error('❌ Errore eliminazione cliente');
@@ -1605,6 +1672,16 @@ export default function ClientiPage() {
                             <option value="privati">👤 Solo Privati</option>
                             <option value="aziende">🏢 Solo Aziende</option>
                         </select>
+                        <select
+                            className="input"
+                            value={filters.haContratti}
+                            onChange={(e) => setFilters({ ...filters, haContratti: e.target.value })}
+                        >
+                            <option value="">⚡🔥 Contratti</option>
+                            <option value="luce">⚡ Solo clienti con contratti Luce</option>
+                            <option value="gas">🔥 Solo clienti con contratti Gas</option>
+                            <option value="both">⚡🔥 Solo clienti con entrambi</option>
+                        </select>
 
                         <input
                             type="text"
@@ -2097,7 +2174,7 @@ export default function ClientiPage() {
                 <div className="card">
                     <div className="flex items-center justify-between text-sm text-gray-600">
                         <div>
-                            Visualizzati <strong>{clienti.length}</strong> clienti
+                            Visualizzati <strong>{clienti.length}</strong> clienti{total > 0 ? <> su <strong>{total}</strong></> : null}
                             {selectedClients.size > 0 && (
                                 <> • <strong>{selectedClients.size}</strong> selezionati</>
                             )}
@@ -2110,6 +2187,38 @@ export default function ClientiPage() {
                                 viewMode === 'list' ? 'Lista' :
                                 'Tabella Dettagliata'
                             }</strong>
+                            {/* Paginazione numerica */}
+                            <div className="ml-4 flex items-center gap-1">
+                                {/* Prev */}
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => handlePageClick(Math.max(1, page - 1))}
+                                    disabled={loading || page <= 1}
+                                >
+                                    ‹
+                                </button>
+                                {/* Numeri di pagina compatti attorno alla corrente */}
+                                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                    .slice(Math.max(0, page - 3), Math.min(totalPages, page + 2))
+                                    .map((pNum) => (
+                                        <button
+                                            key={pNum}
+                                            className={`btn btn-secondary ${pNum === page ? 'bg-blue-600 text-white' : ''}`}
+                                            onClick={() => handlePageClick(pNum)}
+                                            disabled={loading || pNum === page}
+                                        >
+                                            {pNum}
+                                        </button>
+                                    ))}
+                                {/* Next */}
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => handlePageClick(Math.min(totalPages, page + 1))}
+                                    disabled={loading || page >= totalPages}
+                                >
+                                    ›
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -250,6 +250,8 @@ function patchClientColumnsIfNeeded() {
       'ALTER TABLE clienti_privati ADD COLUMN preferenza_telefono INTEGER DEFAULT 1',
       'ALTER TABLE clienti_privati ADD COLUMN note TEXT',
       'ALTER TABLE clienti_privati ADD COLUMN data_consenso TEXT',
+      'ALTER TABLE clienti_privati ADD COLUMN utente_acquisizione TEXT',
+      'ALTER TABLE clienti_privati ADD COLUMN news_letter INTEGER DEFAULT 0',
       'ALTER TABLE clienti_privati ADD COLUMN created_by TEXT'
     ];
 

@@ -6,12 +6,16 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 
-const dbPath = path.join(__dirname, '../../gestionale_energia.db');
+// Usa DATABASE_PATH se fornito, altrimenti fallback al DB locale di backend
+const dbPath = process.env.DATABASE_PATH
+  ? path.resolve(process.env.DATABASE_PATH)
+  : path.join(__dirname, '../../gestionale_energia.db');
 const db = new Database(dbPath);
 
 async function runMigration() {
     try {
         console.log('🚀 Inizio migrazione: Tabella Configurazioni...');
+        console.log(`   DB Path: ${dbPath}`);
         
         db.pragma('foreign_keys = ON');
         

@@ -1,7 +1,7 @@
 # Multi-stage build per ottimizzare le dimensioni dell'immagine
 
 # Stage 1: Build del frontend
-FROM node:20 AS frontend-builder
+FROM node:22 AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -9,7 +9,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Build del backend
-FROM node:20 AS backend-builder
+FROM node:22 AS backend-builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -18,7 +18,7 @@ COPY tsconfig.json ./
 RUN npx tsc -p tsconfig.json
 
 # Stage 3: Immagine finale di produzione
-FROM node:20 AS production
+FROM node:22 AS production
 WORKDIR /app
 
 # Installa SQLite3, Python, curl e strumenti di build necessari per better-sqlite3

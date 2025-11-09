@@ -516,10 +516,15 @@ router.post('/send-custom-email', authenticate, authorize(), async (req: Request
             SELECT valore FROM configurazioni WHERE chiave = 'email_sender_address'
         `);
 
-        if (!brevoSmtpUser.rows[0] || !brevoSmtpPass.rows[0] || !senderEmail.rows[0]) {
+        // Fallback a variabili d'ambiente se DB è vuoto o mancante
+        const smtpUser = (brevoSmtpUser.rows[0] as any)?.valore || process.env.BREVO_SMTP_USER || '';
+        const smtpPass = (brevoSmtpPass.rows[0] as any)?.valore || process.env.BREVO_SMTP_PASS || '';
+        const sender = (senderEmail.rows[0] as any)?.valore || process.env.EMAIL_SENDER_ADDRESS || '';
+
+        if (!smtpUser || !smtpPass || !sender) {
             return res.status(500).json({ 
                 success: false, 
-                message: 'Configurazione email non trovata. Configura Brevo prima.' 
+                message: 'Configurazione email non trovata o incompleta (DB/ENV). Configura Brevo.' 
             });
         }
 
@@ -530,14 +535,14 @@ router.post('/send-custom-email', authenticate, authorize(), async (req: Request
             port: 587,
             secure: false,
             auth: {
-                user: (brevoSmtpUser.rows[0] as any).valore,
-                pass: (brevoSmtpPass.rows[0] as any).valore
+                user: smtpUser,
+                pass: smtpPass
             }
         });
 
         // Invia email
         await transporter.sendMail({
-            from: (senderEmail.rows[0] as any).valore,
+            from: sender,
             to: destinatari.join(', '),
             subject: oggetto,
             html: corpo

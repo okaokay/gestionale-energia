@@ -18,7 +18,9 @@
     "db:migrate-ai": "ts-node backend/database/migrate-ai-config.ts",
     "db:import-demo": "ts-node backend/database/import-demo-data.ts",
     "db:seed": "ts-node backend/database/seed-more-demo.ts",
-    "start": "node dist/backend/server.js"
+    "start": "node scripts/start-with-migrate.js",
+    "start:direct": "node dist/backend/server.js",
+    "seed:verify": "node scripts/verify-seed-db.js"
   },
   "dependencies": {
     "@types/json2csv": "^5.0.7",

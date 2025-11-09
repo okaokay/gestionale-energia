@@ -49,6 +49,7 @@ router.get('/', validatePagination, async (req: Request, res: Response, next: Ne
         const offset = (page - 1) * limit;
         const search = req.query.search as string || '';
         const tipo = req.query.tipo as string || ''; // 'privati' o 'aziende'
+        const contratti = (req.query.contratti as string) || ''; // 'luce' | 'gas' | 'both'
         
         // 🔐 FILTRO PER RUOLO UTENTE
         const user = req.user as any;
@@ -118,6 +119,15 @@ router.get('/', validatePagination, async (req: Request, res: Response, next: Ne
         let privati: any[] = [];
         if (tipo !== 'aziende') {
             const searchFilter = search ? 'WHERE (cp.nome LIKE ? OR cp.cognome LIKE ? OR cp.codice_fiscale LIKE ? OR cp.email_principale LIKE ?)' : 'WHERE 1=1';
+            // Filtro combinazioni contratti per privati
+            let contrattiFilterPrivati = '';
+            if (contratti === 'luce') {
+                contrattiFilterPrivati = ` AND EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_privato_id = cp.id)`;
+            } else if (contratti === 'gas') {
+                contrattiFilterPrivati = ` AND EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_privato_id = cp.id)`;
+            } else if (contratti === 'both') {
+                contrattiFilterPrivati = ` AND EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_privato_id = cp.id) AND EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_privato_id = cp.id)`;
+            }
             const privatiQuery = `
                 SELECT 
                     'privato' as tipo,
@@ -143,6 +153,7 @@ router.get('/', validatePagination, async (req: Request, res: Response, next: Ne
                     ${newsletterPrivatiSelect}
                 FROM clienti_privati cp
                 ${searchFilter}
+                ${contrattiFilterPrivati}
                 ${roleFilter}
                 ORDER BY cp.created_at DESC
                 LIMIT ? OFFSET ?
@@ -168,6 +179,15 @@ router.get('/', validatePagination, async (req: Request, res: Response, next: Ne
             }
             
             const searchFilterAziende = search ? 'WHERE (ca.ragione_sociale LIKE ? OR ca.partita_iva LIKE ? OR ca.email_referente LIKE ?)' : 'WHERE 1=1';
+            // Filtro combinazioni contratti per aziende
+            let contrattiFilterAziende = '';
+            if (contratti === 'luce') {
+                contrattiFilterAziende = ` AND EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_azienda_id = ca.id)`;
+            } else if (contratti === 'gas') {
+                contrattiFilterAziende = ` AND EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_azienda_id = ca.id)`;
+            } else if (contratti === 'both') {
+                contrattiFilterAziende = ` AND EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_azienda_id = ca.id) AND EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_azienda_id = ca.id)`;
+            }
             const aziendeQuery = `
                 SELECT 
                     'azienda' as tipo,
@@ -198,6 +218,7 @@ router.get('/', validatePagination, async (req: Request, res: Response, next: Ne
                     ${newsletterAziendeSelect}
                 FROM clienti_aziende ca
                 ${searchFilterAziende}
+                ${contrattiFilterAziende}
                 ${roleFilterAziende}
                 ORDER BY ca.created_at DESC
                 LIMIT ? OFFSET ?
@@ -218,28 +239,122 @@ router.get('/', validatePagination, async (req: Request, res: Response, next: Ne
         let totalCount = 0;
         if (tipo === 'privati') {
             const searchFilter = search ? 'WHERE (nome LIKE ? OR cognome LIKE ?)' : 'WHERE 1=1';
-            const countQuery = `SELECT COUNT(*) as count FROM clienti_privati cp ${searchFilter} ${roleFilter}`;
+            let contrattiFilterPrivati = '';
+            if (contratti === 'luce') {
+                contrattiFilterPrivati = ` AND EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_privato_id = cp.id)`;
+            } else if (contratti === 'gas') {
+                contrattiFilterPrivati = ` AND EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_privato_id = cp.id)`;
+            } else if (contratti === 'both') {
+                contrattiFilterPrivati = ` AND EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_privato_id = cp.id) AND EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_privato_id = cp.id)`;
+            }
+            const countQuery = `SELECT COUNT(*) as count FROM clienti_privati cp ${searchFilter} ${contrattiFilterPrivati} ${roleFilter}`;
             const countParams = search ? [`%${search}%`, `%${search}%`, ...roleParams] : roleParams;
             const countResult = await pool.query(countQuery, countParams);
             totalCount = parseInt((countResult.rows[0] as any).count);
         } else if (tipo === 'aziende') {
             const searchFilter = search ? 'WHERE (ragione_sociale LIKE ?)' : 'WHERE 1=1';
             let roleFilterAziende = roleFilter.replace(/cp\./g, 'ca.');
-            const countQuery = `SELECT COUNT(*) as count FROM clienti_aziende ca ${searchFilter} ${roleFilterAziende}`;
+            let contrattiFilterAziende = '';
+            if (contratti === 'luce') {
+                contrattiFilterAziende = ` AND EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_azienda_id = ca.id)`;
+            } else if (contratti === 'gas') {
+                contrattiFilterAziende = ` AND EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_azienda_id = ca.id)`;
+            } else if (contratti === 'both') {
+                contrattiFilterAziende = ` AND EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_azienda_id = ca.id) AND EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_azienda_id = ca.id)`;
+            }
+            const countQuery = `SELECT COUNT(*) as count FROM clienti_aziende ca ${searchFilter} ${contrattiFilterAziende} ${roleFilterAziende}`;
             const countParams = search ? [`%${search}%`, ...roleParams] : roleParams;
             const countResult = await pool.query(countQuery, countParams);
             totalCount = parseInt((countResult.rows[0] as any).count);
         } else {
-            const countPrivatiQuery = `SELECT COUNT(*) as count FROM clienti_privati cp WHERE 1=1 ${roleFilter}`;
+            let contrattiFilterPrivati = '';
+            let contrattiFilterAziende = '';
+            if (contratti === 'luce') {
+                contrattiFilterPrivati = ` AND EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_privato_id = cp.id)`;
+                contrattiFilterAziende = ` AND EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_azienda_id = ca.id)`;
+            } else if (contratti === 'gas') {
+                contrattiFilterPrivati = ` AND EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_privato_id = cp.id)`;
+                contrattiFilterAziende = ` AND EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_azienda_id = ca.id)`;
+            } else if (contratti === 'both') {
+                contrattiFilterPrivati = ` AND EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_privato_id = cp.id) AND EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_privato_id = cp.id)`;
+                contrattiFilterAziende = ` AND EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_azienda_id = ca.id) AND EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_azienda_id = ca.id)`;
+            }
+            const countPrivatiQuery = `SELECT COUNT(*) as count FROM clienti_privati cp WHERE 1=1 ${contrattiFilterPrivati} ${roleFilter}`;
             const countPrivati = await pool.query(countPrivatiQuery, roleParams);
             
             let roleFilterAziende = roleFilter.replace(/cp\./g, 'ca.');
-            const countAziendeQuery = `SELECT COUNT(*) as count FROM clienti_aziende ca WHERE 1=1 ${roleFilterAziende}`;
+            const countAziendeQuery = `SELECT COUNT(*) as count FROM clienti_aziende ca WHERE 1=1 ${contrattiFilterAziende} ${roleFilterAziende}`;
             const countAziende = await pool.query(countAziendeQuery, roleParams);
             
             totalCount = parseInt((countPrivati.rows[0] as any).count) + parseInt((countAziende.rows[0] as any).count);
         }
         
+        // Calcolo breakdown totali per KPI (privati, aziende, con contratti)
+        // I conteggi rispettano gli stessi filtri di ricerca, ruolo e combinazioni contratti
+        let privatiCount = 0;
+        let aziendeCount = 0;
+        let conContrattiCount = 0;
+
+        // Conteggio privati
+        if (tipo !== 'aziende') {
+            const searchFilterPrivati = search ? 'WHERE (cp.nome LIKE ? OR cp.cognome LIKE ? OR cp.codice_fiscale LIKE ? OR cp.email_principale LIKE ?)' : 'WHERE 1=1';
+            let contrattiFilterPrivati = '';
+            if (contratti === 'luce') {
+                contrattiFilterPrivati = ` AND EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_privato_id = cp.id)`;
+            } else if (contratti === 'gas') {
+                contrattiFilterPrivati = ` AND EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_privato_id = cp.id)`;
+            } else if (contratti === 'both') {
+                contrattiFilterPrivati = ` AND EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_privato_id = cp.id) AND EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_privato_id = cp.id)`;
+            }
+            const privatiCountQuery = `SELECT COUNT(*) as count FROM clienti_privati cp ${searchFilterPrivati} ${contrattiFilterPrivati} ${roleFilter}`;
+            const privatiCountParams = search ? [`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, ...roleParams] : roleParams;
+            const privatiCountRes = await pool.query(privatiCountQuery, privatiCountParams);
+            privatiCount = parseInt((privatiCountRes.rows[0] as any).count);
+
+            // Con contratti (privati): almeno un contratto luce o gas
+            let conContrattiPrivatiFilter = ` AND (
+                EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_privato_id = cp.id)
+                OR EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_privato_id = cp.id)
+            )`;
+            const conContrattiPrivatiQuery = `SELECT COUNT(*) as count FROM clienti_privati cp ${searchFilterPrivati} ${conContrattiPrivatiFilter} ${roleFilter}`;
+            const conContrattiPrivatiRes = await pool.query(conContrattiPrivatiQuery, privatiCountParams);
+            conContrattiCount += parseInt((conContrattiPrivatiRes.rows[0] as any).count);
+        }
+
+        // Conteggio aziende
+        if (tipo !== 'privati') {
+            const searchFilterAz = search ? 'WHERE (ca.ragione_sociale LIKE ? OR ca.partita_iva LIKE ? OR ca.email_referente LIKE ?)' : 'WHERE 1=1';
+            let roleFilterAziende = '';
+            if (user.role === 'operatore' || user.role === 'agent') {
+                roleFilterAziende = 'AND ca.assigned_agent_id = ?';
+            } else if (user.role === 'admin') {
+                roleFilterAziende = `AND ca.assigned_agent_id IN (
+                    SELECT id FROM users WHERE parent_id = ? OR id = ?
+                )`;
+            }
+            let contrattiFilterAz = '';
+            if (contratti === 'luce') {
+                contrattiFilterAz = ` AND EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_azienda_id = ca.id)`;
+            } else if (contratti === 'gas') {
+                contrattiFilterAz = ` AND EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_azienda_id = ca.id)`;
+            } else if (contratti === 'both') {
+                contrattiFilterAz = ` AND EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_azienda_id = ca.id) AND EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_azienda_id = ca.id)`;
+            }
+            const aziendeCountQuery = `SELECT COUNT(*) as count FROM clienti_aziende ca ${searchFilterAz} ${contrattiFilterAz} ${roleFilterAziende}`;
+            const aziendeCountParams = search ? [`%${search}%`, `%${search}%`, `%${search}%`, ...roleParams] : roleParams;
+            const aziendeCountRes = await pool.query(aziendeCountQuery, aziendeCountParams);
+            aziendeCount = parseInt((aziendeCountRes.rows[0] as any).count);
+
+            // Con contratti (aziende)
+            let conContrattiAziendeFilter = ` AND (
+                EXISTS (SELECT 1 FROM contratti_luce cl WHERE cl.cliente_azienda_id = ca.id)
+                OR EXISTS (SELECT 1 FROM contratti_gas cg WHERE cg.cliente_azienda_id = ca.id)
+            )`;
+            const conContrattiAziendeQuery = `SELECT COUNT(*) as count FROM clienti_aziende ca ${searchFilterAz} ${conContrattiAziendeFilter} ${roleFilterAziende}`;
+            const conContrattiAziendeRes = await pool.query(conContrattiAziendeQuery, aziendeCountParams);
+            conContrattiCount += parseInt((conContrattiAziendeRes.rows[0] as any).count);
+        }
+
         res.json({
             success: true,
             data: {
@@ -249,6 +364,12 @@ router.get('/', validatePagination, async (req: Request, res: Response, next: Ne
                     limit,
                     total: totalCount,
                     totalPages: Math.ceil(totalCount / limit)
+                },
+                totals: {
+                    totale: totalCount,
+                    privati: privatiCount,
+                    aziende: aziendeCount,
+                    conContratti: conContrattiCount
                 }
             }
         });
