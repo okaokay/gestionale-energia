@@ -9,15 +9,9 @@ services:
       - --api.dashboard=true
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
-      - --entrypoints.web.address=:80
-      - --entrypoints.websecure.address=:443
-      - --certificatesresolvers.myresolver.acme.httpchallenge=true
-      - --certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web
-      - --certificatesresolvers.myresolver.acme.email=admin@gmgestionale.cloud
-      - --certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json
+      - --entrypoints.web.address=:3001
     ports:
-      - "80:80"
-      - "443:443"
+      - "3001:3001"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_letsencrypt:/letsencrypt
@@ -66,16 +60,10 @@ services:
       - no-new-privileges:true
     labels:
       - "traefik.enable=true"
-      # HTTPS router
+      # Router HTTP (TLS terminato da proxy Hostinger)
       - "traefik.http.routers.gestionale.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`,`srv1072066.hstgr.cloud`)"
-      - "traefik.http.routers.gestionale.entrypoints=websecure"
-      - "traefik.http.routers.gestionale.tls.certresolver=myresolver"
+      - "traefik.http.routers.gestionale.entrypoints=web"
       - "traefik.http.services.gestionale.loadbalancer.server.port=3001"
-      # HTTP -> HTTPS redirect
-      - "traefik.http.routers.gestionale-http.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`,`srv1072066.hstgr.cloud`)"
-      - "traefik.http.routers.gestionale-http.entrypoints=web"
-      - "traefik.http.routers.gestionale-http.middlewares=redirect-https"
-      - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
     networks:
       - gestionale_net
 
