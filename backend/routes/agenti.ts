@@ -690,6 +690,20 @@ router.put('/assign-cliente', canReassignCliente, async (req: Request, res: Resp
         }
         
         const tabella = cliente_tipo === 'privato' ? 'clienti_privati' : 'clienti_aziende';
+
+        // Patch di sicurezza: assicura che le colonne commissione_luce/gas esistano
+        try {
+            const info = await pool.query<{ name: string }>(`PRAGMA table_info(${tabella})`);
+            const cols = new Set(info.rows.map((r: any) => r.name));
+            if (!cols.has('commissione_luce')) {
+                await pool.query(`ALTER TABLE ${tabella} ADD COLUMN commissione_luce REAL`);
+            }
+            if (!cols.has('commissione_gas')) {
+                await pool.query(`ALTER TABLE ${tabella} ADD COLUMN commissione_gas REAL`);
+            }
+        } catch (err) {
+            console.log('⚠️ Patch colonne commissioni (ignora se già presenti):', (err as any)?.message || err);
+        }
         
         // Recupera vecchio agente
         const clienteResult = await pool.query(
