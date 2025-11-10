@@ -26,6 +26,8 @@ frontend/.env
 *.sqlite
 *.sqlite3
 !backend/database/schema.sql
+# Allow committing the seed DB used for automatic restore on Hostinger
+!seed_data/gestionale_energia_seed.db
 
 # Uploads and temp files
 uploads/
