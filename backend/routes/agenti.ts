@@ -723,16 +723,46 @@ router.put('/assign-cliente', canReassignCliente, async (req: Request, res: Resp
         // Aggiorna assegnazione + commissioni
         if (use_separate_commissions) {
             // Usa commissioni separate per luce e gas
-            await pool.query(
-                `UPDATE ${tabella} 
-                 SET assigned_agent_id = ?, 
-                     commissione_luce = ?,
-                     commissione_gas = ?,
-                     commissione_pattuita = NULL,
-                     updated_at = CURRENT_TIMESTAMP 
-                 WHERE id = ?`,
-                [new_agent_id, commissione_luce || null, commissione_gas || null, cliente_id]
-            );
+            try {
+                await pool.query(
+                    `UPDATE ${tabella} 
+                     SET assigned_agent_id = ?, 
+                         commissione_luce = ?,
+                         commissione_gas = ?,
+                         commissione_pattuita = NULL,
+                         updated_at = CURRENT_TIMESTAMP 
+                     WHERE id = ?`,
+                    [new_agent_id, commissione_luce || null, commissione_gas || null, cliente_id]
+                );
+            } catch (updateErr: any) {
+                const msg = String(updateErr?.message || updateErr);
+                if (msg.includes('no such column: commissione_luce') || msg.includes('no such column: commissione_gas')) {
+                    console.log('⚠️  Colonne commissioni mancanti durante UPDATE. Provo ad aggiungerle e ripetere...');
+                    try {
+                        await pool.query(`ALTER TABLE ${tabella} ADD COLUMN commissione_luce REAL`);
+                    } catch (e) {
+                        // ignora duplicate
+                    }
+                    try {
+                        await pool.query(`ALTER TABLE ${tabella} ADD COLUMN commissione_gas REAL`);
+                    } catch (e) {
+                        // ignora duplicate
+                    }
+                    // Ritenta l'UPDATE
+                    await pool.query(
+                        `UPDATE ${tabella} 
+                         SET assigned_agent_id = ?, 
+                             commissione_luce = ?,
+                             commissione_gas = ?,
+                             commissione_pattuita = NULL,
+                             updated_at = CURRENT_TIMESTAMP 
+                         WHERE id = ?`,
+                        [new_agent_id, commissione_luce || null, commissione_gas || null, cliente_id]
+                    );
+                } else {
+                    throw updateErr;
+                }
+            }
             
             console.log('✅ Commissioni separate aggiornate:', { commissione_luce, commissione_gas });
             
