@@ -1,38 +1,21 @@
-version: "3.8"
+# Docker Compose (Hostinger) con Traefik incluso
+# - Due servizi: app e traefik
+# - Pubblicazione su 80/443 con HTTPS (Let's Encrypt)
+# - Rete condivisa `gestionale_net`
 
 services:
-  traefik:
-    image: traefik:v2.10
-    container_name: traefik
-    restart: unless-stopped
-    command:
-      - --api.dashboard=true
-      # Usa file provider (Hostinger non permette Docker socket)
-      - --providers.file.directory=/etc/traefik/dynamic
-      - --providers.file.watch=true
-      - --entrypoints.web.address=:3001
-      - --log.level=DEBUG
-      - --accesslog=true
-    ports:
-      - "3001:3001"
-    volumes:
-      - ./traefik:/etc/traefik/dynamic:ro
-      - traefik_letsencrypt:/letsencrypt
-    networks:
-      - gestionale_net
-
   gestionale-energia:
-    # Builda direttamente l'immagine dal repository clonato (evita registry esterni)
     build:
       context: ..
       dockerfile: Dockerfile
-    container_name: gestionale-energia
+    container_name: gestionale-energia-hostinger
     restart: unless-stopped
     environment:
       - NODE_ENV=production
       - PORT=3001
       - TZ=Europe/Rome
       - LOG_LEVEL=info
+      - FORCE_SEED_RESTORE=true
       - FRONTEND_URL=https://gmgestionale.cloud
       - BACKEND_URL=https://gmgestionale.cloud
       - CORS_ORIGIN=https://gmgestionale.cloud
@@ -42,8 +25,7 @@ services:
       - JWT_EXPIRES_IN=7d
       - DATABASE_PATH=/app/data/gestionale_energia.db
       - INIT_DB=true
-      - FORCE_SEED_RESTORE=true
-      # Brevo/Email configuration (replace placeholders before deploy)
+      # Config email (sostituisci prima del deploy se necessario)
       - EMAIL_SENDER_NAME=Gestionale Energia
       - EMAIL_SENDER_ADDRESS=noreply@gmgestionale.cloud
       - BREVO_SMTP_USER=apikey
@@ -52,26 +34,79 @@ services:
     volumes:
       - uploads_data:/app/uploads
       - database_data:/app/data
+    # Espone anche 8080 per debug locale; Traefik pubblica su 80/443
+    ports:
+      - "8080:3001"
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:3001/health"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
     command: ["node", "scripts/start-with-migrate.js"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     security_opt:
       - no-new-privileges:true
+    networks:
+      - gestionale_net
     labels:
       - "traefik.enable=true"
-      # Nota: routing definito via file provider in /etc/traefik/dynamic/dynamic.yml
+      # Router HTTPS
+      - "traefik.http.routers.gestionale.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
+      - "traefik.http.routers.gestionale.entrypoints=websecure"
+      - "traefik.http.routers.gestionale.tls=true"
+      - "traefik.http.routers.gestionale.tls.certresolver=letsencrypt"
+      - "traefik.http.services.gestionale.loadbalancer.server.port=3001"
+      # Router HTTP con redirect → HTTPS
+      - "traefik.http.routers.gestionale-http.rule=Host(`gmgestionale.cloud`,`www.gmgestionale.cloud`)"
+      - "traefik.http.routers.gestionale-http.entrypoints=web"
+      - "traefik.http.routers.gestionale-http.middlewares=redirect-https"
+      - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.redirect-https.redirectscheme.permanent=true"
+      - "traefik.docker.network=gestionale_net"
+
+  traefik:
+    image: traefik:v2.10
+    container_name: traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.letsencrypt.acme.email=info.gianlucamancini@gmail.com
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
     networks:
       - gestionale_net
 
-volumes:
-  uploads_data:
-  database_data:
-  traefik_letsencrypt:
 
 networks:
   gestionale_net:
     driver: bridge
+
+volumes:
+  uploads_data:
+    driver: local
+  database_data:
+    driver: local
+  traefik_letsencrypt:
+    driver: local
