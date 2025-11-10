@@ -130,6 +130,8 @@ function patchSchemaIfNeeded() {
     const columns = db.prepare("PRAGMA table_info(email_campaigns)").all().map(c => c.name);
     const hasScheduledEndAt = columns.includes('scheduled_end_at');
     const hasSentAt = columns.includes('sent_at');
+    const hasSubject = columns.includes('subject');
+    const hasFiltriTargeting = columns.includes('filtri_targeting');
 
     if (!hasScheduledEndAt) {
       try {
@@ -159,6 +161,39 @@ function patchSchemaIfNeeded() {
           console.log('   ⚠️  Patch: tabella email_campaigns assente, verrà creata dalla migrazione');
         } else {
           console.log('   ⚠️  Patch: impossibile aggiungere sent_at:', msg);
+        }
+      }
+    }
+
+    // Assicura colonne usate dalle route runtime
+    if (!hasSubject) {
+      try {
+        db.exec("ALTER TABLE email_campaigns ADD COLUMN subject TEXT;");
+        console.log('   ✅ Patch: aggiunta colonna email_campaigns.subject');
+      } catch (e) {
+        const msg = typeof e.message === 'string' ? e.message : String(e);
+        if (msg.includes('duplicate column name')) {
+          console.log('   ⚠️  Patch: subject già presente, skip');
+        } else if (msg.includes('no such table')) {
+          console.log('   ⚠️  Patch: tabella email_campaigns assente, verrà creata dalla migrazione');
+        } else {
+          console.log('   ⚠️  Patch: impossibile aggiungere subject:', msg);
+        }
+      }
+    }
+
+    if (!hasFiltriTargeting) {
+      try {
+        db.exec("ALTER TABLE email_campaigns ADD COLUMN filtri_targeting TEXT;");
+        console.log('   ✅ Patch: aggiunta colonna email_campaigns.filtri_targeting');
+      } catch (e) {
+        const msg = typeof e.message === 'string' ? e.message : String(e);
+        if (msg.includes('duplicate column name')) {
+          console.log('   ⚠️  Patch: filtri_targeting già presente, skip');
+        } else if (msg.includes('no such table')) {
+          console.log('   ⚠️  Patch: tabella email_campaigns assente, verrà creata dalla migrazione');
+        } else {
+          console.log('   ⚠️  Patch: impossibile aggiungere filtri_targeting:', msg);
         }
       }
     }
@@ -252,7 +287,10 @@ function patchClientColumnsIfNeeded() {
       'ALTER TABLE clienti_privati ADD COLUMN data_consenso TEXT',
       'ALTER TABLE clienti_privati ADD COLUMN utente_acquisizione TEXT',
       'ALTER TABLE clienti_privati ADD COLUMN news_letter INTEGER DEFAULT 0',
-      'ALTER TABLE clienti_privati ADD COLUMN created_by TEXT'
+      'ALTER TABLE clienti_privati ADD COLUMN created_by TEXT',
+      // Commissioni per agente su cliente
+      'ALTER TABLE clienti_privati ADD COLUMN commissione_luce REAL',
+      'ALTER TABLE clienti_privati ADD COLUMN commissione_gas REAL'
     ];
 
     for (const sql of privatiColumns) {
@@ -297,7 +335,10 @@ function patchClientColumnsIfNeeded() {
       'ALTER TABLE clienti_aziende ADD COLUMN codice_sdi TEXT',
       'ALTER TABLE clienti_aziende ADD COLUMN note TEXT',
       'ALTER TABLE clienti_aziende ADD COLUMN data_consenso TEXT',
-      'ALTER TABLE clienti_aziende ADD COLUMN created_by TEXT'
+      'ALTER TABLE clienti_aziende ADD COLUMN created_by TEXT',
+      // Commissioni per agente su cliente
+      'ALTER TABLE clienti_aziende ADD COLUMN commissione_luce REAL',
+      'ALTER TABLE clienti_aziende ADD COLUMN commissione_gas REAL'
     ];
 
     for (const sql of aziendeColumns) {
