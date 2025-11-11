@@ -145,6 +145,41 @@ router.post('/:tipoContratto/:contrattoId', authenticate, upload.single('allegat
 
         // Inserisci storico solo se la procedura è valida e cambiata
         if (procedureChanged) {
+            // Verifica esistenza FK prima di inserire (diagnostica FK failed)
+            const userId = String((user as any).userId || user.id);
+            const fkUser = await pool.query(`SELECT id FROM users WHERE id = ?`, [userId]);
+            if (!fkUser.rows || fkUser.rows.length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Utente creatore non trovato',
+                    details: { userId }
+                });
+            }
+
+            const fkContratto = await pool.query(`SELECT id FROM ${tabellaContratto} WHERE id = ?`, [contrattoId]);
+            if (!fkContratto.rows || fkContratto.rows.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: `Contratto ${tipoContratto} non trovato per id specificato`,
+                    details: { contrattoId }
+                });
+            }
+
+            const insertParams = [
+                storicoId,
+                contrattoId,
+                tipoContratto,
+                proceduraPrecedente,
+                nuovaProceduraTrim,
+                note || null,
+                allegatoData.filename,
+                allegatoData.path,
+                allegatoData.mimetype,
+                allegatoData.size,
+                userId
+            ];
+
+            console.log('📝 Inserimento storico_procedure params:', insertParams);
             await pool.query(`
                 INSERT INTO storico_procedure (
                     id,
@@ -160,19 +195,7 @@ router.post('/:tipoContratto/:contrattoId', authenticate, upload.single('allegat
                     created_by,
                     created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-            `, [
-                storicoId,
-                contrattoId,
-                tipoContratto,
-                proceduraPrecedente,
-                nuovaProceduraTrim,
-                note || null,
-                allegatoData.filename,
-                allegatoData.path,
-                allegatoData.mimetype,
-                allegatoData.size,
-                user.id
-            ]);
+            `, insertParams);
         }
 
         // Aggiorna la procedura nel contratto
