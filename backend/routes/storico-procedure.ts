@@ -343,9 +343,6 @@ router.post('/:tipoContratto/:contrattoId', authenticate, upload.single('allegat
                     } else {
                         console.log('⏭️ Condizioni non soddisfatte - Nessuna azione di pagamento');
                     }
-                } else {
-                    console.log('⚠️ Cliente non trovato nella tabella:', tabellaCliente);
-                }
                 } catch (clienteError: any) {
                     console.log('⚠️ Tabella clienti non disponibile:', tabellaCliente);
                     console.log('   Errore:', clienteError.message);
