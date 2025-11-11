@@ -506,55 +506,8 @@ router.put('/:id/stato', async (req: Request, res: Response) => {
                 console.log('   - Commissione pattuita:', cliente.commissione_pattuita);
                 console.log('   - Agente assegnato:', cliente.assigned_agent_id);
                 
-                if (cliente.commissione_pattuita && 
-                    cliente.assigned_agent_id) {
-                    
-                    // Verifica se esiste già un compenso per questo contratto specifico
-                    const compensoEsistente = await pool.query(`
-                        SELECT id FROM compensi 
-                        WHERE contratto_id = ? AND agente_id = ?
-                    `, [id, cliente.assigned_agent_id]);
-                    
-                    if (compensoEsistente.rows.length === 0) {
-                        console.log(`💰 Automazione commissione (da contratti-compilazione): Cliente ${clienteData.cliente_id} - Stato "${stato}" - Commissione: €${cliente.commissione_pattuita}`);
-                        
-                        // Crea compenso nella tabella compensi (logica corretta)
-                        const { randomUUID } = require('crypto');
-                        const compensoId = randomUUID();
-                        
-                        await pool.query(`
-                            INSERT INTO compensi (
-                                id, 
-                                agente_id, 
-                                cliente_id, 
-                                cliente_tipo,
-                                contratto_id,
-                                contratto_tipo,
-                                importo, 
-                                tipo,
-                                descrizione,
-                                stato,
-                                data_maturazione,
-                                created_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                        `, [
-                            compensoId,
-                            cliente.assigned_agent_id,
-                            clienteData.cliente_id,
-                            clienteData.cliente_tipo,
-                            id, // ID del contratto
-                            clienteData.cliente_tipo === 'privato' ? 'luce' : 'gas', // Tipo contratto basato sul tipo cliente
-                            cliente.commissione_pattuita,
-                            'commissione_contratto',
-                            `Commissione per contratto - Cambio stato a ${stato}`,
-                            'maturato',
-                            new Date().toISOString()
-                        ]);
-
-                        console.log(`✅ Commissione automatica creata per cliente ${clienteData.cliente_id}: €${cliente.commissione_pattuita}`);
-                    } else {
-                        console.log(`ℹ️ Compenso già esistente per contratto ${id}`);
-                    }
+                if (cliente.commissione_pattuita && cliente.assigned_agent_id) {
+                    console.log('⏭️ Pagamento commissione demandato alla rotta contratti (stato Attivo)');
                 }
             }
         }

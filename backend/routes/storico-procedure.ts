@@ -291,10 +291,10 @@ router.post('/:tipoContratto/:contrattoId', authenticate, upload.single('allegat
             ]);
             
             // ═══════════════════════════════════════════════════════════════════════════
-            // AUTOMAZIONE PAGAMENTO COMMISSIONE
+            // AUTOMAZIONE COMMISSIONE (solo assegnazione dati cliente; pagamento centralizzato su contratti)
             // ═══════════════════════════════════════════════════════════════════════════
             
-            const statiPagamento = ['Da attivare', 'Chiusa', 'chiusa', 'Attivo']; // Stati che triggerano il pagamento
+            const statiPagamento = ['Attivo']; // Nessun pagamento qui; solo gestione assegnazione
             
             console.log('🔍 Verifica condizioni automazione commissione (da scheda cliente):');
             console.log('   - Stato precedente:', stato_precedente);
@@ -302,7 +302,7 @@ router.post('/:tipoContratto/:contrattoId', authenticate, upload.single('allegat
             console.log('   - Stato è cambiato?', stato_precedente !== stato_nuovo);
             console.log('   - Va a Chiusa/Da attivare?', statiPagamento.includes(stato_nuovo));
             
-            // Se lo stato cambia verso Chiusa/Da attivare, gestisci commissione
+            // Se lo stato cambia verso "Attivo", aggiorna eventuale assegnazione ma NON creare compensi qui
             if (stato_precedente !== stato_nuovo && statiPagamento.includes(stato_nuovo)) {
                 // Se sono stati forniti agente_id e commissione_pattuita, assegna al cliente
                 if (agente_id && commissione_pattuita && cliente_id && cliente_tipo) {
@@ -338,72 +338,10 @@ router.post('/:tipoContratto/:contrattoId', authenticate, upload.single('allegat
                         console.log('   - Commissione pattuita:', cliente.commissione_pattuita);
                         console.log('   - Commissione già pagata?', cliente.commissione_pagata);
                         
-                        if (cliente.assigned_agent_id && cliente.commissione_pattuita) {
-                            console.log('✅ Condizioni soddisfatte - Creazione compenso automatico');
-                            
-                            // Verifica se esiste già un compenso per questo contratto specifico
-                            const compensoEsistente = await pool.query(`
-                                SELECT id FROM compensi 
-                                WHERE contratto_id = ? AND contratto_tipo = ? AND agente_id = ?
-                            `, [contrattoId, tipoContratto, cliente.assigned_agent_id]);
-                            
-                            if (compensoEsistente.rows.length === 0) {
-                                // Crea compenso per l'agente
-                                const compensoId = randomUUID();
-                                await pool.query(`
-                                    INSERT INTO compensi (
-                                        id, 
-                                        agente_id, 
-                                        cliente_id, 
-                                        cliente_tipo,
-                                        contratto_id,
-                                        contratto_tipo,
-                                        importo, 
-                                        tipo,
-                                        descrizione,
-                                        stato,
-                                        data_maturazione,
-                                        created_at
-                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                                `, [
-                                    compensoId,
-                                    cliente.assigned_agent_id,
-                                    clienteId,
-                                    clienteTipo,
-                                    contrattoId,
-                                    tipoContratto,
-                                    cliente.commissione_pattuita,
-                                    'commissione_contratto',
-                                    `Commissione per contratto ${tipoContratto.toUpperCase()} - Cambio stato da ${stato_precedente} a ${stato_nuovo}`,
-                                    'maturato',
-                                    new Date().toISOString()
-                                ]);
-                                
-                                // Log audit per compenso creato
-                                await pool.query(`
-                                    INSERT INTO audit_log (
-                                        tipo_azione, risorsa_tipo, risorsa_id,
-                                        cliente_id, cliente_tipo,
-                                        descrizione,
-                                        utente_id, utente_nome, data_azione
-                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                                `, [
-                                    'compenso_creato',
-                                    'compenso',
-                                    compensoId,
-                                    clienteId,
-                                    clienteTipo,
-                                    `Compenso automatico creato per contratto ${tipoContratto.toUpperCase()} - Importo: €${cliente.commissione_pattuita}`,
-                                    user.id,
-                                    `${user.nome} ${user.cognome}`
-                                ]);
-                                
-                                console.log('💰 Compenso creato con successo:', compensoId);
-                            } else {
-                                console.log(`ℹ️ Compenso ${tipoContratto.toUpperCase()} già esistente per contratto ${contrattoId}`);
-                            }
+                        // Pagamento commissione NON gestito qui per evitare duplicati
+                        console.log('⏭️ Pagamento commissione demandato alla rotta contratti (stato Attivo)');
                     } else {
-                        console.log('⏭️ Condizioni non soddisfatte - Nessun compenso creato');
+                        console.log('⏭️ Condizioni non soddisfatte - Nessuna azione di pagamento');
                     }
                 } else {
                     console.log('⚠️ Cliente non trovato nella tabella:', tabellaCliente);

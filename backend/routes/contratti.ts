@@ -339,11 +339,11 @@ router.put('/luce/:id', authorize('operatore', 'admin', 'super_admin'), validate
                 // AUTOMAZIONE PAGAMENTO COMMISSIONE
                 // ═══════════════════════════════════════════════════════════════════════════
                 
-                const statiPagamento = ['Da attivare', 'Chiusa', 'chiusa', 'Attivo']; // Stati che triggerano il pagamento
+                const statiPagamento = ['Attivo']; // Pagamento SOLO quando il contratto diventa attivo
                 
                 console.log('🔍 Verifica condizioni automazione commissione (da contratto LUCE):');
                 console.log('   - Stato nuovo:', req.body.stato);
-                console.log('   - Stati che triggerano pagamento:', statiPagamento);
+                console.log('   - Stato che triggera pagamento:', 'Attivo');
                 console.log('   - Stato è valido?', statiPagamento.includes(req.body.stato));
                 console.log('   - Commissione già pagata?', cliente?.commissione_pagata);
                 console.log('   - Commissione LUCE:', cliente?.commissione_luce);
@@ -390,7 +390,7 @@ router.put('/luce/:id', authorize('operatore', 'admin', 'super_admin'), validate
                             'luce', // Tipo contratto
                             cliente.commissione_luce,
                             'commissione_contratto',
-                            `Commissione per contratto luce - Cambio stato a ${req.body.stato}`,
+                            `Commissione per contratto luce - Stato attivo`,
                             'maturato',
                             new Date().toISOString()
                         ]);
@@ -481,11 +481,11 @@ router.put('/gas/:id', authorize('operatore', 'admin', 'super_admin'), validateF
                 // AUTOMAZIONE PAGAMENTO COMMISSIONE
                 // ═══════════════════════════════════════════════════════════════════════════
                 
-                const statiPagamento = ['Da attivare', 'Chiusa', 'chiusa', 'Attivo']; // Stati che triggerano il pagamento
+                const statiPagamento = ['Attivo']; // Pagamento SOLO quando il contratto diventa attivo
                 
                 console.log('🔍 Verifica condizioni automazione commissione (da contratto GAS):');
                 console.log('   - Stato nuovo:', req.body.stato);
-                console.log('   - Stati che triggerano pagamento:', statiPagamento);
+                console.log('   - Stato che triggera pagamento:', 'Attivo');
                 console.log('   - Stato è valido?', statiPagamento.includes(req.body.stato));
                 console.log('   - Commissione già pagata?', cliente?.commissione_pagata);
                 console.log('   - Commissione GAS:', cliente?.commissione_gas);
@@ -532,7 +532,7 @@ router.put('/gas/:id', authorize('operatore', 'admin', 'super_admin'), validateF
                             'gas', // Tipo contratto
                             cliente.commissione_gas,
                             'commissione_contratto',
-                            `Commissione per contratto gas - Cambio stato a ${req.body.stato}`,
+                            `Commissione per contratto gas - Stato attivo`,
                             'maturato',
                             new Date().toISOString()
                         ]);
