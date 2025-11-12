@@ -52,8 +52,9 @@ services:
       - gestionale_net
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=gestionale_net"
       # Router HTTPS
-      - "traefik.http.routers.gestionale.rule=(Host(`gmgestionale.cloud`) || Host(`www.gmgestionale.cloud`)) && PathPrefix(`/`)"
+      - "traefik.http.routers.gestionale.rule=((Host(`gmgestionale.cloud`) || Host(`www.gmgestionale.cloud`) || Host(`srv1072066.hstgr.cloud`)) && PathPrefix(`/`))"
       - "traefik.http.routers.gestionale.entrypoints=websecure"
       - "traefik.http.routers.gestionale.tls=true"
       - "traefik.http.routers.gestionale.tls.certresolver=letsencrypt"
@@ -65,7 +66,7 @@ services:
       - "traefik.http.middlewares.unlayer-headers.headers.removeResponseHeaders=Content-Security-Policy,Cross-Origin-Resource-Policy,Cross-Origin-Embedder-Policy"
       - "traefik.http.routers.gestionale.middlewares=unlayer-headers"
       # Router HTTP con redirect → HTTPS
-      - "traefik.http.routers.gestionale-http.rule=(Host(`gmgestionale.cloud`) || Host(`www.gmgestionale.cloud`)) && PathPrefix(`/`)"
+      - "traefik.http.routers.gestionale-http.rule=((Host(`gmgestionale.cloud`) || Host(`www.gmgestionale.cloud`) || Host(`srv1072066.hstgr.cloud`)) && PathPrefix(`/`))"
       - "traefik.http.routers.gestionale-http.entrypoints=web"
       - "traefik.http.routers.gestionale-http.middlewares=redirect-https,unlayer-headers"
       - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
