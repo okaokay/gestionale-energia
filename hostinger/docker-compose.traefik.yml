@@ -111,6 +111,22 @@ services:
       - "traefik.http.routers.traefik.tls=true"
       - "traefik.http.routers.traefik.service=api@internal"
 
+  # Servizio di diagnostica: risponde 200 su /diagnose per verificare match Traefik
+  whoami:
+    image: traefik/whoami:v1.10
+    container_name: whoami
+    restart: unless-stopped
+    networks:
+      - gestionale_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=gestionale_net"
+      - "traefik.http.routers.whoami.rule=PathPrefix(`/diagnose`)"
+      - "traefik.http.routers.whoami.entrypoints=websecure,https"
+      - "traefik.http.routers.whoami.tls=true"
+      - "traefik.http.routers.whoami.service=whoami"
+      - "traefik.http.services.whoami.loadbalancer.server.port=80"
+
 networks:
   gestionale_net:
     driver: bridge
