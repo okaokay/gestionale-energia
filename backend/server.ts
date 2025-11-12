@@ -44,7 +44,27 @@ const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
 // Middleware
-app.use(helmet()); // Security headers
+// Security headers: configurati per permettere l'editor email (Unlayer) in produzione
+app.use(helmet({
+    // Disabilita COEP che può bloccare risorse terze come l'iframe di Unlayer
+    crossOriginEmbedderPolicy: false,
+    // Permetti l'uso di risorse cross-origin (font, immagini, iframe dell'editor)
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
+
+// Content Security Policy esplicita per consentire i domini di Unlayer
+app.use(helmet.contentSecurityPolicy({
+    useDefaults: true,
+    directives: {
+        defaultSrc: ["'self'", 'https:', 'data:', 'blob:'],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'https://editor.unlayer.com', 'https://*.unlayer.com'],
+        connectSrc: ["'self'", 'https://editor.unlayer.com', 'https://api.unlayer.com', 'wss:'],
+        frameSrc: ["'self'", 'https://editor.unlayer.com', 'https://*.unlayer.com'],
+        imgSrc: ["'self'", 'https:', 'data:', 'blob:'],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+    },
+}));
 app.use(cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:5173',
     credentials: true

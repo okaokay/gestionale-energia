@@ -1,5 +1,32 @@
 # Guida al Deployment su Hostinger VPS
 
+## Deploy rapido via GHCR + Traefik (compose da URL)
+
+Se vuoi usare direttamente un `docker-compose` remoto (senza clonare il repo), ho aggiunto il file:
+
+- `https://raw.githubusercontent.com/okaokay/gestionale-energia/main/hostinger/docker-compose.traefik.yml`
+
+Passi rapidi:
+
+1. Accedi al VPS via SSH
+2. Esporta le variabili essenziali (almeno `JWT_SECRET` e `BREVO_API_KEY` se invii email):
+   ```bash
+   export JWT_SECRET="cambia-questa-chiave-molto-lunga-e-casuale"
+   export BREVO_API_KEY="la-tua-api-key-brevo"
+   export FRONTEND_URL="https://gmgestionale.cloud"
+   export BACKEND_URL="https://gmgestionale.cloud"
+   export CORS_ORIGIN="https://gmgestionale.cloud"
+   ```
+3. Avvia con compose remoto:
+   ```bash
+   docker compose -f https://raw.githubusercontent.com/okaokay/gestionale-energia/main/hostinger/docker-compose.traefik.yml up -d
+   ```
+
+Note importanti:
+- L’immagine Docker è pubblicata su GHCR (`ghcr.io/okaokay/gestionale-energia:latest`). Se il repository pacchetti non è pubblico, rendilo pubblico nelle impostazioni di GitHub Packages.
+- Il servizio Traefik nel compose gestisce HTTPS (Let’s Encrypt). Aggiorna il dominio nelle label se diverso da `gmgestionale.cloud`.
+- Il DB SQLite persiste nel volume `database_data` su `/app/data`.
+
 ## Prerequisiti
 
 1. **VPS Hostinger attivo** con accesso SSH

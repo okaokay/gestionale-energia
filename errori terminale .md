@@ -1,113 +1,203 @@
-[Sun Nov 09 2025 11:53:23.679]
-gestionale-energia-app: 
-::ffff:172.18.0.3 - - [09/Nov/2025:10:53:23 +0000] "GET /api/emails/templates HTTP/1.1" 200 26 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
-[Sun Nov 09 2025 11:53:35.080]
-gestionale-energia-app: 
-✅ Email personalizzata inviata: lucatozzi1994@gmail.com | Subject: ciao
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-❌ Errore query SQLite: SqliteError: no such table: cliente_azioni
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-at Database.prepare (/app/node_modules/better-sqlite3/lib/methods/wrappers.js:5:21)
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-at Object.query (/app/dist/backend/config/database.js:56:33)
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-at /app/dist/backend/routes/clientActions.js:470:35
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-at process.processTicksAndRejections (node:internal/process/task_queues:95:5) {
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-code: 'SQLITE_ERROR'
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-}
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-↳ SQL:
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-INSERT INTO cliente_azioni (
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-id, cliente_id, tipo_cliente, tipo_azione, titolo, descrizione,
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-esito, utente_id, metadata
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-) VALUES (?, ?, ?, 'email', 'Email personalizzata inviata', ?, 'successo', ?, ?)
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-↳ Params: [
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-'6355f71b-f5a0-4088-a416-f3d5591356f6',
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-'86744df1-7c0c-4248-826a-1294681dddf6',
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-'privato',
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-'Oggetto: ciao',
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-'95305eb0-1280-4d15-916f-8d58c8c54ab6',
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
-'{"destinatari":["lucatozzi1994@gmail.com"],"oggetto":"ciao","tipo":"custom"}'
-[Sun Nov 09 2025 11:53:35.081]
-gestionale-energia-app: 
+[Tue Nov 11 2025 08:02:14.266]
+gestionale-energia: 
+::ffff:172.18.0.3 - - [11/Nov/2025:07:02:14 +0000] "GET /api/contratti/cliente/privato/38109f47-9974-43e8-b8e7-8ef032e0ab99 HTTP/1.1" 304 - "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 OPR/122.0.0.0 (Edition std-2)"
+[Tue Nov 11 2025 08:02:14.332]
+gestionale-energia: 
+🔄 Stato cliente 38109f47-9974-43e8-b8e7-8ef032e0ab99 sincronizzato con contratto luce: Chiusa
+[Tue Nov 11 2025 08:02:14.332]
+gestionale-energia: 
+🔍 Verifica condizioni automazione commissione (da contratto LUCE):
+[Tue Nov 11 2025 08:02:14.332]
+gestionale-energia: 
+- Stato nuovo: Chiusa
+[Tue Nov 11 2025 08:02:14.332]
+gestionale-energia: 
+- Stati che triggerano pagamento: [ 'Da attivare', 'Chiusa', 'chiusa', 'Attivo' ]
+[Tue Nov 11 2025 08:02:14.332]
+gestionale-energia: 
+- Stato è valido? true
+[Tue Nov 11 2025 08:02:14.332]
+gestionale-energia: 
+- Commissione già pagata? null
+[Tue Nov 11 2025 08:02:14.332]
+gestionale-energia: 
+- Commissione LUCE: null
+[Tue Nov 11 2025 08:02:14.332]
+gestionale-energia: 
+- Agente assegnato: 2d1a5cc5-2326-45e7-87f8-ec4ed4510a9b
+[Tue Nov 11 2025 08:02:14.332]
+gestionale-energia: 
+::ffff:172.18.0.3 - - [11/Nov/2025:07:02:14 +0000] "PUT /api/contratti/luce/be0ca8a1-603d-4ef4-a9d3-0c3933fee1e1 HTTP/1.1" 200 756 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 OPR/122.0.0.0 (Edition std-2)"
+[Tue Nov 11 2025 08:02:14.412]
+gestionale-energia: 
+=== DEBUG PROCEDURA_NUOVA ===
+[Tue Nov 11 2025 08:02:14.413]
+gestionale-energia: 
+Valore ricevuto: "Switch"
+[Tue Nov 11 2025 08:02:14.413]
+gestionale-energia: 
+Tipo: string
+[Tue Nov 11 2025 08:02:14.413]
+gestionale-energia: 
+Lunghezza: 6
+[Tue Nov 11 2025 08:02:14.413]
+gestionale-energia: 
+Valore trimmed: "Switch"
+[Tue Nov 11 2025 08:02:14.413]
+gestionale-energia: 
+Valori validi: [
+[Tue Nov 11 2025 08:02:14.413]
+gestionale-energia: 
+'Switch',
+[Tue Nov 11 2025 08:02:14.413]
+gestionale-energia: 
+'Voltura',
+[Tue Nov 11 2025 08:02:14.413]
+gestionale-energia: 
+'Subentro',
+[Tue Nov 11 2025 08:02:14.413]
+gestionale-energia: 
+'Allaccio',
+[Tue Nov 11 2025 08:02:14.413]
+gestionale-energia: 
+'Attivazione su presa morosa',
+[Tue Nov 11 2025 08:02:14.413]
+gestionale-energia: 
+'Disattivazione',
+[Tue Nov 11 2025 08:02:14.413]
+gestionale-energia: 
+'Voltura mortis causa'
+[Tue Nov 11 2025 08:02:14.413]
+gestionale-energia: 
 ]
-[Sun Nov 09 2025 11:53:35.082]
-gestionale-energia-app: 
-❌ Errore invio email personalizzata: SqliteError: no such table: cliente_azioni
-[Sun Nov 09 2025 11:53:35.082]
-gestionale-energia-app: 
-at Database.prepare (/app/node_modules/better-sqlite3/lib/methods/wrappers.js:5:21)
-[Sun Nov 09 2025 11:53:35.082]
-gestionale-energia-app: 
-at Object.query (/app/dist/backend/config/database.js:56:33)
-[Sun Nov 09 2025 11:53:35.082]
-gestionale-energia-app: 
-at /app/dist/backend/routes/clientActions.js:470:35
-[Sun Nov 09 2025 11:53:35.082]
-gestionale-energia-app: 
-at process.processTicksAndRejections (node:internal/process/task_queues:95:5) {
-[Sun Nov 09 2025 11:53:35.082]
-gestionale-energia-app: 
-code: 'SQLITE_ERROR'
-[Sun Nov 09 2025 11:53:35.082]
-gestionale-energia-app: 
+[Tue Nov 11 2025 08:02:14.413]
+gestionale-energia: 
+È incluso nei valori validi? true
+[Tue Nov 11 2025 08:02:14.413]
+gestionale-energia: 
+=============================
+[Tue Nov 11 2025 08:02:14.415]
+gestionale-energia: 
+❌ Errore query SQLite: SqliteError: FOREIGN KEY constraint failed
+[Tue Nov 11 2025 08:02:14.415]
+gestionale-energia: 
+at Object.query (/app/dist/backend/config/database.js:57:37)
+[Tue Nov 11 2025 08:02:14.415]
+gestionale-energia: 
+at /app/dist/backend/routes/storico-procedure.js:138:35
+[Tue Nov 11 2025 08:02:14.415]
+gestionale-energia: 
+at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+[Tue Nov 11 2025 08:02:14.415]
+gestionale-energia: 
+code: 'SQLITE_CONSTRAINT_FOREIGNKEY'
+[Tue Nov 11 2025 08:02:14.415]
+gestionale-energia: 
 }
-[Sun Nov 09 2025 11:53:35.082]
-gestionale-energia-app: 
-❌ Errore: SqliteError: no such table: cliente_azioni
-[Sun Nov 09 2025 11:53:35.082]
-gestionale-energia-app: 
-at Database.prepare (/app/node_modules/better-sqlite3/lib/methods/wrappers.js:5:21)
-[Sun Nov 09 2025 11:53:35.082]
-gestionale-energia-app: 
-at Object.query (/app/dist/backend/config/database.js:56:33)
-[Sun Nov 09 2025 11:53:35.082]
-gestionale-energia-app: 
-at /app/dist/backend/routes/clientActions.js:470:35
-[Sun Nov 09 2025 11:53:35.082]
-gestionale-energia-app: 
-at process.processTicksAndRejections (node:internal/process/task_queues:95:5) {
-[Sun Nov 09 2025 11:53:35.082]
-gestionale-energia-app: 
-code: 'SQLITE_ERROR'
-[Sun Nov 09 2025 11:53:35.082]
-gestionale-energia-app: 
+[Tue Nov 11 2025 08:02:14.415]
+gestionale-energia: 
+↳ SQL:
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+INSERT INTO storico_procedure (
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+id,
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+contratto_luce_id,
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+tipo_contratto,
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+procedura_precedente,
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+procedura_nuova,
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+note,
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+allegato_filename,
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+allegato_path,
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+allegato_mimetype,
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+allegato_size,
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+created_by,
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+created_at
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+↳ Params: [
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+'7e87e573-0fe1-4b64-9faf-b62ec72606ab',
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+'be0ca8a1-603d-4ef4-a9d3-0c3933fee1e1',
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+'luce',
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+null,
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+'Switch',
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+'Stato modificato dalla lista clienti',
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+null,
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+null,
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+null,
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+null,
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+'afa64685-9c41-414a-a931-44b01f65d6e7'
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+]
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+❌ Errore: SqliteError: FOREIGN KEY constraint failed
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+at Object.query (/app/dist/backend/config/database.js:57:37)
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+at /app/dist/backend/routes/storico-procedure.js:138:35
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
+code: 'SQLITE_CONSTRAINT_FOREIGNKEY'
+[Tue Nov 11 2025 08:02:14.416]
+gestionale-energia: 
 }
-[Sun Nov 09 2025 11:53:35.083]
-gestionale-energia-app: 
-::ffff:172.18.0.3 - - [09/Nov/2025:10:53:35 +0000] "POST /api/client-actions/send-custom-email HTTP/1.1" 500 64 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+[Tue Nov 11 2025 08:02:14.417]
+gestionale-energia: 
+::ffff:172.18.0.3 - - [11/Nov/2025:07:02:14 +0000] "POST /api/storico-procedure/luce/be0ca8a1-603d-4ef4-a9d3-0c3933fee1e1 HTTP/1.1" 500 64 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36 OPR/122.0.0.0 (Edition std-2)"

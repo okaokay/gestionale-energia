@@ -70,6 +70,7 @@ interface FilterState {
     consensoMarketing: string;
     newsletter: string;
     dataQuality: string;
+    agenteId: string;
 }
 
 export default function ClientiPage() {
@@ -134,7 +135,8 @@ export default function ClientiPage() {
         haContratti: '',
         consensoMarketing: '',
         newsletter: '',
-        dataQuality: ''
+        dataQuality: '',
+        agenteId: ''
     });
 
     // Statistiche
@@ -501,6 +503,11 @@ export default function ClientiPage() {
                     if (filters.dataQuality === 'incomplete') return c.incomplete_data === 1 || c.incomplete_data === true;
                     return true;
                 });
+            }
+
+            // Filtro per Agente assegnato
+            if (filters.agenteId) {
+                filtered = filtered.filter((c: any) => String(c.assigned_agent_id ?? '') === String(filters.agenteId));
             }
             
             if (append) {
@@ -940,7 +947,8 @@ export default function ClientiPage() {
             haContratti: '',
             consensoMarketing: '',
             newsletter: '',
-            dataQuality: ''
+            dataQuality: '',
+            agenteId: ''
         });
     };
     
@@ -1681,6 +1689,20 @@ export default function ClientiPage() {
                             <option value="luce">⚡ Solo clienti con contratti Luce</option>
                             <option value="gas">🔥 Solo clienti con contratti Gas</option>
                             <option value="both">⚡🔥 Solo clienti con entrambi</option>
+                        </select>
+
+                        {/* Nuovo filtro: Agente */}
+                        <select
+                            className="input"
+                            value={filters.agenteId}
+                            onChange={(e) => setFilters({ ...filters, agenteId: e.target.value })}
+                        >
+                            <option value="">🎯 Agente</option>
+                            {agenti.map(a => (
+                                <option key={a.id} value={String(a.id)}>
+                                    {a.nome} {a.cognome}
+                                </option>
+                            ))}
                         </select>
 
                         <input

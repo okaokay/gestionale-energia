@@ -15,7 +15,17 @@ export default function ScadenzePage() {
     const loadScadenze = async () => {
         try {
             const response = await contrattiAPI.getScadenze(giorni);
-            setScadenze(response.data.data);
+            const rows = Array.isArray(response.data?.data) ? response.data.data : [];
+            const normalized = rows.map((r: any) => ({
+                ...r,
+                // Normalizza campi anagrafici cliente
+                cliente_nome: r.cliente_nome ?? r.azienda_nome ?? [r.nome, r.cognome].filter(Boolean).join(' '),
+                email: r.email ?? r.cliente_email ?? r.azienda_email ?? '',
+                telefono: r.telefono ?? r.telefono_mobile ?? r.telefono_referente ?? '',
+                // Uniforma nome campo data scadenza
+                data_scadenza: r.data_scadenza ?? r.data_fine ?? r.data_scadenza_contratto ?? r.data_scadenza,
+            }));
+            setScadenze(normalized);
         } catch (error) {
             toast.error('Errore caricamento scadenze');
         } finally {
@@ -67,10 +77,10 @@ export default function ScadenzePage() {
                                 {scadenze.map((scadenza, index) => (
                                     <tr key={index} className="hover:bg-gray-50">
                                         <td className="px-4 py-3 font-medium text-gray-900">
-                                            {scadenza.nome} {scadenza.cognome}
+                                            {scadenza.cliente_nome || [scadenza.nome, scadenza.cognome].filter(Boolean).join(' ') || '—'}
                                         </td>
-                                        <td className="px-4 py-3 text-sm text-gray-600">{scadenza.email}</td>
-                                        <td className="px-4 py-3 text-sm text-gray-600">{scadenza.telefono}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">{scadenza.email || scadenza.cliente_email || scadenza.azienda_email || '—'}</td>
+                                        <td className="px-4 py-3 text-sm text-gray-600">{scadenza.telefono || scadenza.telefono_mobile || scadenza.telefono_referente || '—'}</td>
                                         <td className="px-4 py-3 text-sm">
                                             <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                                                 scadenza.tipo_contratto === 'luce' 
@@ -82,7 +92,7 @@ export default function ScadenzePage() {
                                         </td>
                                         <td className="px-4 py-3 text-sm text-gray-600">{scadenza.fornitore}</td>
                                         <td className="px-4 py-3 text-sm text-gray-600">
-                                            {new Date(scadenza.data_scadenza).toLocaleDateString('it-IT')}
+                                            {scadenza.data_scadenza ? new Date(scadenza.data_scadenza).toLocaleDateString('it-IT') : '—'}
                                         </td>
                                         <td className="px-4 py-3">
                                             <span className={`px-3 py-1 rounded-full text-xs font-bold ${
