@@ -51,11 +51,16 @@ services:
       - "traefik.docker.network=gestionale_net"
       # Router HTTPS
       - "traefik.http.routers.gestionale.rule=((Host(`gmgestionale.cloud`) || Host(`www.gmgestionale.cloud`) || Host(`srv1072066.hstgr.cloud`)) && PathPrefix(`/`))"
-      - "traefik.http.routers.gestionale.entrypoints=websecure"
+      - "traefik.http.routers.gestionale.entrypoints=websecure,https"
       - "traefik.http.routers.gestionale.tls=true"
       - "traefik.http.routers.gestionale.tls.certresolver=letsencrypt"
       - "traefik.http.routers.gestionale.service=gestionale"
       - "traefik.http.services.gestionale.loadbalancer.server.port=3001"
+      # Router HTTPS di fallback catch-all (solo per diagnosi; rimuovere dopo OK)
+      - "traefik.http.routers.gestionale-catchall.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.gestionale-catchall.entrypoints=websecure,https"
+      - "traefik.http.routers.gestionale-catchall.tls=true"
+      - "traefik.http.routers.gestionale-catchall.service=gestionale"
       # Security headers via Traefik (CSP + CORP) per Unlayer
       - "traefik.http.middlewares.unlayer-headers.headers.contentSecurityPolicy=default-src 'self' https: data: blob:; base-uri 'self'; font-src 'self' https: data:; img-src 'self' https: data: blob:; object-src 'none'; script-src 'self' blob: https://editor.unlayer.com https://*.unlayer.com 'unsafe-inline' 'unsafe-eval'; style-src 'self' https: 'unsafe-inline'; frame-src 'self' https://editor.unlayer.com https://*.unlayer.com; connect-src 'self' https://editor.unlayer.com https://*.unlayer.com wss:; form-action 'self'; frame-ancestors 'self'"
       - "traefik.http.middlewares.unlayer-headers.headers.customResponseHeaders.Cross-Origin-Resource-Policy=cross-origin"
@@ -63,7 +68,7 @@ services:
       - "traefik.http.routers.gestionale.middlewares=unlayer-headers"
       # Router HTTP con redirect → HTTPS
       - "traefik.http.routers.gestionale-http.rule=((Host(`gmgestionale.cloud`) || Host(`www.gmgestionale.cloud`) || Host(`srv1072066.hstgr.cloud`)) && PathPrefix(`/`))"
-      - "traefik.http.routers.gestionale-http.entrypoints=web"
+      - "traefik.http.routers.gestionale-http.entrypoints=web,http"
       - "traefik.http.routers.gestionale-http.middlewares=redirect-https,unlayer-headers"
       - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
       - "traefik.http.middlewares.redirect-https.redirectscheme.permanent=true"
